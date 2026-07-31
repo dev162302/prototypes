@@ -155,13 +155,14 @@ function platform(x,y,w,id,a){
 
 /* hazard teeth, sitting on a deck. Warm against a blue world so they read
    as the one thing on screen you must not touch. */
-function spikes(x,y,n,a){
+function spikes(x,y,n,a,calm){
+  const c=calm?BRIGHT:WARN, h=calm?6:19;
   for(let i=0;i<n;i++){
     const x0=x+i*20, mx=x0+10;
-    tri(x0,y+2, x0+20,y+2, mx,y-19, WARN,a*.92,a*.92,a*.92);
-    tri(x0+3,y+1, x0+17,y+1, mx,y-13, [1,1,1],a*.22,a*.22,a*.22);
+    tri(x0,y+2, x0+20,y+2, mx,y-h, c,a*.92,a*.92,a*.92);
+    if(!calm) tri(x0+3,y+1, x0+17,y+1, mx,y-13, [1,1,1],a*.22,a*.22,a*.22);
   }
-  halo(x+n*10,y-8,n*15,WARN,.11*a);
+  halo(x+n*10,y-h*.4,n*15,c,(calm?.06:.11)*a);
 }
 
 /* ---------- FBO / viewport ---------- */
@@ -229,18 +230,21 @@ const S={ctx:null,on:true,noise:null,bus:null,
  best(){[0,4,7,12].forEach((s,i)=>setTimeout(()=>this.tone(330*Math.pow(2,s/12),.6,.09,"sine",0,2600),i*95));}};
 
 /* ---------- input ---------- */
-const In={tap:false,pos:null,ptrs:new Map(),confirm:false};
+/* tap is a COUNT, not a flag. Two taps inside one frame — which is exactly
+   what a fast double tap is on a 30fps phone — collapsed into one and the
+   ripple never fired. */
+const In={tap:0,pos:null,ptrs:new Map(),confirm:false};
 addEventListener("keydown",e=>{
   if(["Space","ArrowUp","Enter","KeyM"].includes(e.code))e.preventDefault();
   if(e.repeat)return;
-  if(e.code==="Space"||e.code==="ArrowUp")In.tap=true;
+  if(e.code==="Space"||e.code==="ArrowUp")In.tap++;
   if(e.code==="Enter")In.confirm=true;
   if(e.code==="KeyM")S.on=!S.on;
   S.init();S.resume();});
 const pt=e=>{const r=glc.getBoundingClientRect();
   return{x:(e.clientX-r.left-ox)/scale,y:(e.clientY-r.top-oy)/scale};};
 glc.addEventListener("pointerdown",e=>{const p=pt(e);In.ptrs.set(e.pointerId,p);
-  In.tap=true;In.pos=p;S.init();S.resume();
+  In.tap++;In.pos=p;S.init();S.resume();
   try{glc.setPointerCapture(e.pointerId);}catch(x){}});
 glc.addEventListener("pointermove",e=>{if(In.ptrs.has(e.pointerId))In.ptrs.set(e.pointerId,pt(e));});
 const end=e=>In.ptrs.delete(e.pointerId);
@@ -261,6 +265,7 @@ const BALL_X=()=>VW*0.34;          /* the ball sits here; the world moves */
 const G={
   state:"title",t:0,st:0,ts:1,slow:0,
   worldX:0,speed:300,score:0,stars:0,combo:0,bestCombo:0,gates:0,
+  chain:0,bestChain:0,calmed:0,
   shake:0,flash:0,aberr:.0018,
   ball:null,plats:[],gems:[],swaps:[],rings:[],parts:[],waves:[],
   nextX:0,newBest:false,reason:"",
@@ -268,6 +273,7 @@ const G={
   reset(){
     this.worldX=0;this.speed=300;this.score=0;this.stars=0;
     this.combo=0;this.bestCombo=0;this.gates=0;
+    this.chain=0;this.bestChain=0;this.calmed=0;
     this.newBest=false;this.reason="";
     this.plats=[];this.gems=[];this.swaps=[];this.rings=[];this.parts=[];this.waves=[];
     this.ts=1;this.slow=0;this.flash=0;this.aberr=.0018;
@@ -322,8 +328,16 @@ const G={
 
     this.plats.push(p);
 
-    if(Math.random()<.72)
-      this.gems.push({x:x-gap/2,y:y-rnd(70,140),got:false,ph:rnd(0,TAU)});
+    /* Stars sit in a short arc along the jump path rather than alone. One
+       star per gap left the ripple with nothing to chain to — the nearest
+       neighbour was 300px away and no sane reach would ever bridge it. */
+    if(Math.random()<.80){
+      const n=RI(2,4), cx=x-gap/2, apex=Math.min(last.baseY||last.y,y)-105;
+      for(let i=0;i<n;i++){
+        const t=i-(n-1)/2;
+        this.gems.push({x:cx+t*52,y:apex+t*t*11,got:false,ph:rnd(0,TAU)});
+      }
+    }
 
     /* a brand ring hung on the natural jump arc. Deliberately NOT lethal —
        procedural placement plus a lethal hoop is how you get unfair deaths.
@@ -361,6 +375,86 @@ const G={
 };
 
 /* ============================================================
+   THE RIPPLE
+   ------------------------------------------------------------
+   The client's concept is that one small action produces a visible,
+   wider response. So the second tap is not just a boost: it sends a
+   circle outward, and everything the circle reaches sends out a circle
+   of its own. Scoring follows the same idea — each step outward is
+   worth more than the last, so one tap that spreads beats several taps
+   that don't. That is the campaign argument, stated as a rule rather
+   than as a caption.
+   ============================================================ */
+const RIP_R=195, CHAIN_R=128, RIP_DEPTH=9;
+
+function ripple(ox,oy){
+  const b=G.ball;
+  G.chain=0;
+  /* the brand device: concentric circles leaving the point of the tap */
+  for(let i=0;i<3;i++)
+    G.waves.push({x:ox,y:oy,r:6,a:1.15-i*.20,c:BRIGHT,max:RIP_R+i*16,
+      v:640,th:4.4-i*1.0,g:1.0-i*.18,d:i*.05});
+
+  let frontier=[[ox,oy,RIP_R]], depth=0;
+  while(frontier.length&&depth<RIP_DEPTH){
+    const next=[], D=depth;
+    for(const f of frontier){
+      const fx=f[0], fy=f[1], fr=f[2];
+
+      for(const g of G.gems){
+        if(g.got)continue;
+        const gx=g.x-G.worldX;
+        if(Math.hypot(gx-fx,g.y-fy)>fr)continue;
+        g.got=true;G.stars++;G.chain++;
+        G.combo++;G.bestCombo=Math.max(G.bestCombo,G.combo);
+        G.score+=2*G.combo;
+        const k=G.combo-1;setTimeout(()=>S.star(k),D*70);
+        next.push([gx,g.y,CHAIN_R]);
+        G.waves.push({x:gx,y:g.y,r:4,a:.95,c:BRIGHT,max:CHAIN_R,v:520,th:2.8,g:.85,d:D*.07});
+        for(let i=0;i<5;i++){const a=rnd(0,TAU),sp=rnd(30,150);
+          G.parts.push({x:gx,y:g.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+            life:rnd(.2,.5),max:.5,r:rnd(1,2.2),c:BRIGHT});}
+      }
+
+      for(const rg of G.rings){
+        if(rg.got)continue;
+        const rx=rg.x-G.worldX;
+        if(Math.hypot(rx-fx,rg.y-fy)>fr+rg.r)continue;
+        rg.got=true;G.gates++;G.chain++;G.score+=5;
+        next.push([rx,rg.y,CHAIN_R]);
+        G.waves.push({x:rx,y:rg.y,r:rg.r*.4,a:1.0,c:BRIGHT,max:rg.r+CHAIN_R*.5,v:520,th:3.2,g:.9,d:D*.07});
+        setTimeout(()=>S.gate(),D*70);
+      }
+
+      /* Spikes are settled rather than destroyed. A game whose winning move
+         is smashing things is an odd thing to put a health logo on. */
+      for(const p of G.plats){
+        if(!p.spikes||p.spikes.calm)continue;
+        const cx=p.spikes.x-G.worldX+p.spikes.n*10;
+        if(Math.hypot(cx-fx,p.y-fy)>fr)continue;
+        p.spikes.calm=true;G.calmed++;G.chain++;G.score+=8;
+        next.push([cx,p.y,CHAIN_R]);
+        G.waves.push({x:cx,y:p.y,r:6,a:.9,c:BRIGHT,max:CHAIN_R,v:520,th:2.8,g:.85,d:D*.07});
+      }
+
+      for(const sw of G.swaps){
+        if(sw.got)continue;
+        const wx=sw.x-G.worldX;
+        if(Math.hypot(wx-fx,sw.y-fy)>fr)continue;
+        sw.got=true;G.chain++;G.score+=3;
+        b.id=(b.id+1+RI(0,2))%4;
+        next.push([wx,sw.y,CHAIN_R]);
+        G.waves.push({x:wx,y:sw.y,r:6,a:.9,c:BRIGHT,max:CHAIN_R,v:520,th:2.8,g:.85,d:D*.07});
+      }
+    }
+    frontier=next;depth++;
+  }
+
+  G.bestChain=Math.max(G.bestChain,G.chain);
+  if(G.chain>2){ G.flash=Math.max(G.flash,.10+G.chain*.02); G.ts=.55; G.slow=.22; }
+}
+
+/* ============================================================
    UPDATE
    ============================================================ */
 function step(dt){
@@ -368,15 +462,17 @@ function step(dt){
   G.speed=lerp(300,470,clamp(G.score/45,0,1));
   G.worldX+=G.speed*dt;
 
-  if(In.tap){
-    In.tap=false;
+  /* one per physics step, so a stacked pair still reads as two distinct
+     inputs rather than both resolving at the same position */
+  if(In.tap>0){
+    In.tap--;
     if(b.grounded){ b.vy=JUMP; b.jumps=1; b.grounded=false; b.on=null; S.jump();
       G.waves.push({x:BX,y:b.y+BR,r:4,a:.45,c:IDS[b.id].rgb}); }
     else if(b.jumps<2){ b.vy=JUMP*.88; b.jumps=2; S.dbl();   /* the double tap */
-      G.waves.push({x:BX,y:b.y,r:3,a:.6,c:IDS[b.id].rgb});
       for(let i=0;i<10;i++){const a=rnd(0,TAU),sp=rnd(40,170);
         G.parts.push({x:BX+Math.cos(a)*6,y:b.y+Math.sin(a)*6,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp+90,
-          life:rnd(.2,.5),max:.5,r:rnd(1,2.4),c:IDS[b.id].rgb});} }
+          life:rnd(.2,.5),max:.5,r:rnd(1,2.4),c:IDS[b.id].rgb});}
+      ripple(BX,b.y); }
   }
 
   /* moving platforms drift, touched ones start dissolving */
@@ -411,7 +507,7 @@ function step(dt){
     if(p.alpha<=0) continue;
 
     /* spikes: you must be over them in the air, not on the deck */
-    if(p.spikes){
+    if(p.spikes&&!p.spikes.calm){
       const s0=p.spikes.x-G.worldX, s1=s0+p.spikes.n*20;
       if(BX+BR*.6>s0 && BX-BR*.6<s1 && b.y+BR>p.y-19 && b.y-BR<p.y+6){
         G.die("spikes"); return;
@@ -485,7 +581,12 @@ function fx(dt){
     if(p.life<=0){G.parts.splice(i,1);continue;}
     p.vy+=560*dt;p.x-=G.speed*dt*.35;p.x+=p.vx*dt;p.y+=p.vy*dt;}
   for(let i=G.waves.length-1;i>=0;i--){const w=G.waves[i];
-    w.r+=300*dt;w.a-=1.6*dt;w.x-=G.speed*dt;if(w.a<=0)G.waves.splice(i,1);}
+    w.x-=G.speed*dt;
+    if(w.d>0){w.d-=dt;continue;}
+    const cap=w.max||1e9;
+    w.r=Math.min(w.r+(w.v||300)*dt,cap);
+    w.a-=(w.r>=cap?3.0:1.6)*dt;
+    if(w.a<=0)G.waves.splice(i,1);}
   G.shake=Math.max(0,G.shake-dt*70);
   G.flash=Math.max(0,G.flash-dt*1.9);
   G.aberr=Math.max(.0016,G.aberr-dt*.06);
@@ -509,7 +610,8 @@ function scene(t){
     for(let k=0;k<3;k++) ring(x+sx,y+sy,54+k*30+(i%3)*24,1.1,k?DEEP:BRIGHT,(k?.55:.16)-k*.13,26);
   }
 
-  for(const w of G.waves) ring(w.x+sx,w.y+sy,w.r,2.2,w.c,clamp(w.a,0,1)*.5,34);
+  for(const w of G.waves){ if(w.d>0)continue;
+    ring(w.x+sx,w.y+sy,w.r,w.th||2.2,w.c,clamp(w.a,0,1)*(w.g||.5),40); }
 
   for(const p of G.plats){
     const x=p.x-G.worldX+sx;
@@ -526,7 +628,7 @@ function scene(t){
       const a=p.touched>0?p.alpha:.85;
       ring(x+p.w/2,p.y+sy,p.w*.5+8,1.2,BRIGHT,.22*a,32);
     }
-    if(p.spikes) spikes(p.spikes.x-G.worldX+sx,p.y+sy,p.spikes.n,p.alpha);
+    if(p.spikes) spikes(p.spikes.x-G.worldX+sx,p.y+sy,p.spikes.n,p.alpha,p.spikes.calm);
   }
 
   /* brand rings hung over the gaps — thread one for a bonus */
@@ -667,7 +769,7 @@ function drawUI(t){
     ui.font="300 34px ui-sans-serif,system-ui,sans-serif";
     ui.fillStyle="rgba(255,255,255,.92)";
     ui.fillText(String(G.score),24,54);
-    trk("★ "+G.stars+"   ◎ "+G.gates,24,72,9,400,"rgba(255,255,255,.34)",2.6,"left");
+    trk("★ "+G.stars+"   ◎ "+G.gates+"   ~ "+G.calmed,24,72,9,400,"rgba(255,255,255,.34)",2.6,"left");
     trk(Math.floor(G.worldX/50)+" M",24,88,8,400,"rgba(127,212,255,.40)",2.6,"left");
     if(G.combo>1){
       ui.textAlign="left";
@@ -685,12 +787,13 @@ function drawUI(t){
     ui.fillStyle="rgba(255,255,255,.96)";
     ui.fillText("RUN",VW/2,VH*.28);
     ui.textAlign="left";
-    trk("TAP TO JUMP — TAP AGAIN TO DOUBLE JUMP",VW/2,VH*.28+26,8.5,400,"rgba(255,255,255,.42)",3.4,"center");
-    trk("DON'T FALL — CHAIN STARS — THREAD THE RINGS",VW/2,VH*.28+50,8,400,"rgba(255,255,255,.32)",3.2,"center");
-    trk("WATCH THE DECKS THAT FADE",VW/2,VH*.28+66,7.5,400,"rgba(127,212,255,.34)",3.2,"center");
+    trk("TAP TO JUMP — TAP AGAIN TO RIPPLE",VW/2,VH*.28+26,8.5,400,"rgba(255,255,255,.42)",3.4,"center");
+    trk("THE RIPPLE WAKES WHAT IT REACHES,",VW/2,VH*.28+50,8,400,"rgba(255,255,255,.32)",3.2,"center");
+    trk("AND WHAT IT WAKES RIPPLES ON",VW/2,VH*.28+64,8,400,"rgba(255,255,255,.32)",3.2,"center");
+    trk("EACH STEP OUTWARD IS WORTH MORE THAN THE LAST",VW/2,VH*.28+84,7.5,400,"rgba(127,212,255,.38)",3.2,"center");
     const b=btn("BEGIN",VH*.80,168,42);
     trk("NOVO NORDISK",VW/2,VH-28,8,400,"rgba(255,255,255,.20)",4,"center");
-    if(hit(b)||In.confirm||In.tap){In.tap=false;In.confirm=false;G.start();}
+    if(hit(b)||In.confirm||In.tap){In.tap=0;In.confirm=false;G.start();}
   }
 
   if(G.state==="dead"&&G.st>.45){
@@ -702,16 +805,16 @@ function drawUI(t){
     ui.font="200 92px ui-sans-serif,system-ui,sans-serif";ui.fillStyle="#fff";
     ui.fillText(String(G.score),VW/2,VH*.46);
     ui.textAlign="left";
-    trk("★ "+G.stars+"   ·   ◎ "+G.gates+"   ·   BEST ×"+G.bestCombo,
+    trk("★ "+G.stars+"   ·   ◎ "+G.gates+"   ·   ~ "+G.calmed,
       VW/2,VH*.50,9,400,"rgba(255,255,255,.34)",3.2,"center");
-    trk(Math.floor(G.worldX/50)+" M   ·   BEST "+(Save.best||0),
+    trk("WIDEST RIPPLE  "+G.bestChain+"   ·   "+Math.floor(G.worldX/50)+" M   ·   BEST "+(Save.best||0),
       VW/2,VH*.50+16,8,400,"rgba(127,212,255,.34)",3.2,"center");
     trk("SOME THINGS ARE WORTH THE WAIT",VW/2,VH*.60,9,400,"rgba(255,255,255,.55)",3.6,"center");
     trk("YOUR HEALTH ISN'T",VW/2,VH*.60+18,9,500,"#fff",3.6,"center");
     trk("NOVONORDISK.COM",VW/2,VH*.60+40,7.5,400,"rgba(255,255,255,.28)",3.2,"center");
     const r=btn("AGAIN",VH*.76,168,42);
     ui.restore();
-    if(hit(r)||In.confirm||In.tap){In.tap=false;In.confirm=false;G.start();}
+    if(hit(r)||In.confirm||In.tap){In.tap=0;In.confirm=false;G.start();}
   }
 }
 
@@ -725,7 +828,7 @@ function frame(now){
   else acc=0;
   fx(raw*(G.state==="dead"?G.ts:1));
   render(G.t);drawUI(G.t);
-  In.tap=false;In.pos=null;In.confirm=false;
+  In.tap=0;In.pos=null;In.confirm=false;
   requestAnimationFrame(frame);
 }
 resize();G.reset();
