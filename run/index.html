@@ -25,15 +25,17 @@
    RUN — after Color Switch: Run Mode
    A portrait platformer runner. The ball runs forward on its own;
    you tap to jump and tap again in the air for a second jump.
-   Collect stars. You may only land on a platform that matches
-   your colour — switchers change which colour that is.
+   Collect stars. Miss a platform and the run ends.
+
+   There is deliberately no colour rule: you may land anywhere.
+   Platforms therefore render in the ball's OWN colour, so nothing
+   on screen implies a restriction that does not exist. Switchers
+   repaint the whole run and pay points - a flourish, not a gate.
 
    Portrait-first: the play column has a fixed width and the
    height is derived from the device, so a tall phone gets more
    playfield rather than letterbox bars.
 
-   Colour is never the only signal — each identity also carries a
-   stroke pattern, so it is playable without colour vision.
    BRAND NOTE: hues are placeholders pending guidelines.
    ============================================================ */
 const glc=document.getElementById("gl"), uic=document.getElementById("ui");
@@ -129,7 +131,7 @@ function star(x,y,r,c,a,rot){
   for(let i=1;i<pts.length-1;i++)
     tri(pts[0][0],pts[0][1],pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],c,a,a,a);
 }
-/* a platform drawn in its identity's pattern, so colour is never alone */
+/* platforms carry the ball's current identity, colour and pattern alike */
 function platform(x,y,w,id,a){
   const P=IDS[id], c=P.rgb, th=9;
   halo(x+w/2,y,w*.55,c,.13);
@@ -247,7 +249,7 @@ const G={
     this.ts=1;this.slow=0;this.flash=0;this.aberr=.0018;
     this.ball={y:VH*.45,vy:0,id:0,jumps:0,rot:0,grounded:false,trail:[]};
     /* a long, generous opening run */
-    this.plats.push({x:-120,y:VH*.60,w:520,id:0,passed:true});
+    this.plats.push({x:-120,y:VH*.60,w:520,passed:true});
     this.nextX=420;
     for(let i=0;i<9;i++)this.gen();
   },
@@ -260,9 +262,8 @@ const G={
     const gap=RI(Math.round(lerp(80,130,diff)), Math.round(lerp(165,255,diff)));
     const w=RI(Math.round(lerp(150,95,diff)), Math.round(lerp(230,150,diff)));
     const y=clamp(last.y+rnd(-VH*.12,VH*.12), VH*.28, VH*.74);
-    const id=Math.random()<.55?last.id:(Math.random()*4)|0;
     const x=last.x+last.w+gap;
-    this.plats.push({x,y,w,id,passed:false});
+    this.plats.push({x,y,w,passed:false});
     /* a star over the gap is the reason to jump early rather than late */
     if(Math.random()<.75)
       this.gems.push({x:x-gap/2,y:y-rnd(60,130),got:false,ph:rnd(0,TAU)});
@@ -321,7 +322,6 @@ function step(dt){
     const sx=p.x-G.worldX;
     if(BX+BR<sx || BX-BR>sx+p.w) continue;
     if(b.vy>=0 && prevY+BR<=p.y+2 && b.y+BR>=p.y){
-      if(p.id!==b.id){ G.die("mismatch"); return; }
       b.y=p.y-BR; b.vy=0; b.jumps=0; b.grounded=true;
       if(!wasGround){ S.land();
         for(let i=0;i<6;i++)
@@ -349,7 +349,7 @@ function step(dt){
     s.ph+=dt*2.4;
     if(Math.hypot((s.x-G.worldX)-BX,s.y-b.y)<BR+19){
       s.got=true;let id=b.id;while(id===b.id)id=(Math.random()*4)|0;
-      b.id=id;S.swap();G.flash=Math.max(G.flash,.1);
+      b.id=id;G.score+=3;S.swap();G.flash=Math.max(G.flash,.14);
       const c=IDS[id].rgb;
       for(let i=0;i<16;i++){const a=rnd(0,TAU),sp=rnd(40,200);
         G.parts.push({x:s.x-G.worldX,y:s.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
@@ -399,7 +399,7 @@ function scene(t){
   for(const p of G.plats){
     const x=p.x-G.worldX+sx;
     if(x>VW+80||x+p.w<-80)continue;
-    platform(x,p.y+sy,p.w,p.id,1);
+    platform(x,p.y+sy,p.w,G.ball.id,1);
   }
 
   for(const g of G.gems){
@@ -534,8 +534,7 @@ function drawUI(t){
     ui.fillText("RUN",VW/2,VH*.36);
     ui.textAlign="left";
     trk("TAP TO JUMP — TAP AGAIN TO DOUBLE JUMP",VW/2,VH*.36+26,8.5,400,"rgba(255,255,255,.42)",3.4,"center");
-    trk("LAND ONLY ON YOUR OWN COLOUR",VW/2,VH*.46,8,400,"rgba(255,255,255,.32)",3.2,"center");
-    trk("GET STARS",VW/2,VH*.46+18,8,400,"rgba(255,255,255,.32)",3.2,"center");
+    trk("DON'T FALL — GET STARS",VW/2,VH*.46,8,400,"rgba(255,255,255,.32)",3.2,"center");
     const b=btn("BEGIN",VH*.64,168,42);
     trk("NOVO NORDISK",VW/2,VH-28,8,400,"rgba(255,255,255,.20)",4,"center");
     if(hit(b)||In.confirm||In.tap){In.tap=false;In.confirm=false;G.start();}
@@ -544,7 +543,7 @@ function drawUI(t){
   if(G.state==="dead"&&G.st>.45){
     ui.save();ui.globalAlpha=clamp((G.st-.45)*2.2,0,1);
     scrim(.72);ui.textAlign="left";
-    trk(G.newBest?"NEW BEST":(G.reason==="fell"?"MISSED":"WRONG COLOUR"),
+    trk(G.newBest?"NEW BEST":"MISSED",
       VW/2,VH*.34,10,500,G.newBest?"#fff":"rgba(255,255,255,.5)",5,"center");
     ui.textAlign="center";
     ui.font="200 92px ui-sans-serif,system-ui,sans-serif";ui.fillStyle="#fff";
