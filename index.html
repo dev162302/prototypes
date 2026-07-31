@@ -49,12 +49,13 @@
   .mark i:nth-child(4){inset:23px;background:var(--edge);border:0;opacity:.9}
   a.card:hover .mark i{border-color:var(--edge)}
 
-  .nm{font-size:15px;font-weight:500;letter-spacing:.10em}
+  a.card > span:last-child{display:block;min-width:0}
+  .nm{display:block;font-size:15px;font-weight:500;letter-spacing:.10em}
   .tag{display:inline-block;font-size:9px;letter-spacing:.18em;color:var(--edge);
     border:1px solid rgba(77,225,255,.35);border-radius:20px;padding:2px 9px;margin-left:8px;vertical-align:2px}
   .tag.old{color:var(--dim);border-color:rgba(255,255,255,.18)}
-  .ds{color:var(--dim);font-size:13px;margin-top:7px}
-  .meta{color:#55657f;font-size:11px;margin-top:9px;letter-spacing:.06em}
+  .ds{display:block;color:var(--dim);font-size:13px;margin-top:7px}
+  .meta{display:block;color:#55657f;font-size:11px;margin-top:9px;letter-spacing:.06em}
 
   h2{font-size:11px;letter-spacing:.34em;color:var(--dim);font-weight:500;margin:42px 0 16px}
   .note{color:#55657f;font-size:12px;margin-top:34px;max-width:70ch;line-height:1.9}
