@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#00112E">
+<meta name="robots" content="noindex, nofollow">
+<title>Prototypes — Novo Nordisk × Gamescom 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#00112E; --bg2:#001A3F; --line:rgba(177,213,242,.16);
+    --ink:#EAF3FB; --dim:rgba(226,240,250,.58); --dimmer:rgba(226,240,250,.4);
+    --light:#3B97DE; --tint:#B1D5F2; --magenta:#C6007E;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:
+      radial-gradient(90% 60% at 88% 4%, rgba(59,151,222,.16) 0%, transparent 60%),
+      radial-gradient(70% 50% at 4% 96%, rgba(198,0,126,.10) 0%, transparent 60%),
+      var(--bg);
+    color:var(--ink);
+    font-family:'Apis','Source Sans 3',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding:56px 24px 72px;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+
+  .eyebrow{font-size:11px;letter-spacing:.34em;font-weight:700;color:var(--light)}
+  h1{font-weight:300;font-size:clamp(42px,7vw,68px);letter-spacing:-.01em;line-height:1;margin:18px 0 16px}
+  .lede{color:var(--dim);font-size:15.5px;line-height:1.65;max-width:52ch}
+  .rule{height:1px;background:var(--line);margin:36px 0 34px}
+
+  .sec{font-size:11px;letter-spacing:.3em;font-weight:700;color:var(--dimmer);margin:0 0 18px}
+  .sec:not(:first-of-type){margin-top:44px}
+
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+
+  a.card{
+    display:block;text-decoration:none;color:inherit;
+    background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+    border:1px solid var(--line);border-radius:18px;padding:20px 20px 18px;
+    transition:border-color .18s,transform .12s,background .18s;
+  }
+  a.card:hover{border-color:rgba(59,151,222,.55);background:linear-gradient(180deg,rgba(59,151,222,.10),rgba(255,255,255,.02))}
+  a.card:active{transform:scale(.99)}
+  a.card.star{border-color:rgba(255,255,255,.5);box-shadow:0 0 30px rgba(59,151,222,.16)}
+
+  .head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .mark{width:38px;height:38px;flex:none}
+  .nm{font-size:16px;font-weight:800;letter-spacing:.08em}
+  .tag{
+    font-size:9.5px;letter-spacing:.14em;font-weight:700;
+    border:1px solid rgba(177,213,242,.4);border-radius:50px;padding:3px 9px;color:var(--tint);
+    white-space:nowrap
+  }
+  .tag.hot{border-color:var(--magenta);color:#FF9AD1}
+  .desc{font-size:13.5px;line-height:1.6;color:rgba(234,243,251,.86)}
+  .meta{font-size:11.5px;color:var(--dimmer);margin-top:12px;letter-spacing:.02em}
+
+  .note{
+    margin-top:44px;border:1px solid var(--line);border-radius:16px;padding:18px 20px;
+    background:rgba(255,255,255,.02)
+  }
+  .note h3{font-size:11px;letter-spacing:.28em;font-weight:700;color:var(--dimmer);margin-bottom:10px}
+  .note p{font-size:13px;line-height:1.7;color:var(--dim)}
+  .note code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+    background:rgba(59,151,222,.14);border-radius:5px;padding:1px 6px;color:var(--tint)
+  }
+  footer{margin-top:46px;font-size:10.5px;letter-spacing:.24em;color:var(--dimmer);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">NOVO NORDISK · GAMESCOM 2026</div>
+  <h1>Prototypes</h1>
+  <p class="lede">Every playable build, in one place. Tap any card to play — no install, no login.
+     Mobile-first; all of them work in portrait on a phone.</p>
+
+  <div class="rule"></div>
+
+  <div class="sec">CURRENT</div>
+  <div class="grid">
+
+    <a class="card star" href="ripple/">
+      <div class="head">
+        <svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="4" fill="#EAF3FB"/><circle cx="20" cy="20" r="10" stroke="#3B97DE" stroke-width="1.5" opacity=".9"/><circle cx="20" cy="20" r="16" stroke="#3B97DE" stroke-width="1.2" opacity=".45"/></svg>
+        <span class="nm">RIPPLE ASCENT</span><span class="tag hot">REACT</span>
+      </div>
+      <p class="desc">One tap makes a ripple and the ripple lifts you. Steer through the gaps, gather light,
+         charge a shockwave that blows the obstacles apart. The brand line as a mechanic.</p>
+      <div class="meta">React + Vite · Canvas 2D · 66 KB gzipped · fixed-timestep engine</div>
+    </a>
+
+    <a class="card" href="novo-queuebreak.html">
+      <div class="head">
+        <svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.4" opacity=".8"/></svg>
+        <span class="nm">THE QUEUE BREAK</span>
+      </div>
+      <p class="desc">Editorial top-down tennis against Boredom. First to seven. Drag anywhere to move
+         your racket; the rally speeds up the longer you hold on.</p>
+      <div class="meta">Canvas 2D · 15 KB · <code>?demo</code> for a 2-point match</div>
+    </a>
+
+    <a class="card" href="novo-kingdom.html">
+      <div class="head">
+        <svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.4" opacity=".8"/></svg>
+        <span class="nm">ORB KINGDOM</span>
+      </div>
+      <p class="desc">Base-builder idle. Orbs arrive every second, recruit an army, raise walls, upgrade
+         camp to citadel, and repel a boredom wave every few minutes.</p>
+      <div class="meta">DOM · 35 KB · <code>?demo</code> for a fast first wave</div>
+    </a>
+
+  </div>
+
+  <div class="sec">RIPPLE CONCEPT — EARLIER PASSES</div>
+  <div class="grid">
+
+    <a class="card" href="novo-ripple.html">
+      <div class="head">
+        <svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.4" opacity=".7"/></svg>
+        <span class="nm">RIPPLE</span><span class="tag">15 SEC</span>
+      </div>
+      <p class="desc">The logo disc as the tap target. Fifteen seconds, as many ripples as your thumb can
+         make, ranks and a personal best.</p>
+      <div class="meta">DOM · 35 KB · logo-exact disc placement</div>
+    </a>
+
+    <a class="card" href="novo-effect.html">
+      <div class="head">
+        <svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.4" opacity=".7"/></svg>
+        <span class="nm">THE RIPPLE EFFECT</span><span class="tag">CHAIN</span>
+      </div>
+      <p class="desc">One tap, one ripple — and everything it touches ripples too. A chain reaction across
+         45 drifting moments. Placement is the whole skill.</p>
+      <div class="meta">Canvas 2D · 12 KB</div>
+    </a>
+
+  </div>
+
+  <div class="sec">IDLE / PROGRESSION STUDIES</div>
+  <div class="grid">
+
+    <a class="card" href="novo-clicker.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">ORB CLICKER</span></div>
+      <p class="desc">Cookie-Clicker structure in three columns. Tap the orb, hire ten generators, catch the
+         magenta bonus for a ×7 frenzy.</p>
+      <div class="meta">DOM · 30 KB · offline earnings</div>
+    </a>
+
+    <a class="card" href="novo-smoothie.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">SMOOTH OPERATOR</span></div>
+      <p class="desc">Tap the cup, then hire a bot crew until the line runs itself. Same three-column layout,
+         automation as the progression.</p>
+      <div class="meta">DOM · 31 KB</div>
+    </a>
+
+    <a class="card" href="novo-merge.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">ORB MERGE</span></div>
+      <p class="desc">Drag two matching orbs together to forge the next tier, all the way to the sun disc.
+         The board earns while you think.</p>
+      <div class="meta">DOM · 16 KB</div>
+    </a>
+
+    <a class="card" href="novo-habit.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">HABIT HERO</span></div>
+      <p class="desc">Eight self-care habits fill their own bars and pay out. Tap to hurry one along, level it
+         up to double it.</p>
+      <div class="meta">DOM · 12 KB</div>
+    </a>
+
+    <a class="card" href="novo-pop.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">ORB POP</span></div>
+      <p class="desc">The simplest one here. Orbs float up, you pop them, a robot can be hired to pop them
+         for you. Nothing to explain.</p>
+      <div class="meta">DOM · 13 KB</div>
+    </a>
+
+  </div>
+
+  <div class="sec">FIRST ROUND — SKILL BURSTS</div>
+  <div class="grid">
+
+    <a class="card" href="novo-waiting.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.2" opacity=".5"/></svg><span class="nm">THE WAITING GAME</span></div>
+      <p class="desc">Stop the loader in the gate. Dead centre pays double. The original timing prototype.</p>
+      <div class="meta">Canvas 2D · 18 KB</div>
+    </a>
+
+    <a class="card" href="novo-tap.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.2" opacity=".5"/></svg><span class="nm">FIVE SECONDS</span></div>
+      <p class="desc">Five seconds, count the taps. The Wolt hidden-game clone, rebuilt on brand.</p>
+      <div class="meta">DOM · 14 KB</div>
+    </a>
+
+    <a class="card" href="novo-queue.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.2" opacity=".5"/></svg><span class="nm">QUEUE JUMPER</span></div>
+      <p class="desc">Thread the gaps in the progress bars. Find the magenta fast lane.</p>
+      <div class="meta">Canvas 2D · 17 KB</div>
+    </a>
+
+    <a class="card" href="novo-catch.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.2" opacity=".5"/></svg><span class="nm">CATCH UP</span></div>
+      <p class="desc">Slide the tray, catch the clocks, dodge the buffering spinners. Retired early — kept for
+         the record.</p>
+      <div class="meta">Canvas 2D · 18 KB</div>
+    </a>
+
+  </div>
+
+  <div class="sec">FLOW</div>
+  <div class="grid">
+    <a class="card" href="novo-landing.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">QR LANDING</span></div>
+      <p class="desc">The scan-to-play preloader: the bull throws the sun disc, the disc becomes the orb you
+         tap, and the game is already running underneath.</p>
+      <div class="meta">DOM · 22 KB · <code>?game=</code> switches the game it hands off to</div>
+    </a>
+
+    <a class="card" href="play.html">
+      <div class="head"><svg class="mark" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="3.5" fill="#EAF3FB"/><circle cx="20" cy="20" r="11" stroke="#3B97DE" stroke-width="1.3" opacity=".6"/></svg><span class="nm">SIMPLE PICKER</span></div>
+      <p class="desc">The stripped-back list used for quick booth demos, with no intro animation.</p>
+      <div class="meta">DOM · 4 KB</div>
+    </a>
+  </div>
+
+  <div class="note">
+    <h3>NOTES</h3>
+    <p>Everything except Ripple Ascent is a single self-contained HTML file with no dependencies —
+       drop it anywhere and it runs. Ripple Ascent is a React + Vite build with the game engine kept
+       framework-agnostic, so it can be lifted into any stack.
+       Scores are stored on the device only; no accounts, no tracking, no data leaves the phone.
+       Logo and colours follow the brand guide; <b>Apis is standing in as Source Sans 3</b> until the
+       licensed font pack arrives, so nothing here is a final brand asset.</p>
+  </div>
+
+  <footer>PROTOTYPES · NOT FOR PUBLIC DISTRIBUTION</footer>
+</div>
+</body>
+</html>

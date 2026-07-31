@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE RIPPLE EFFECT — The Waiting Game</title>
+<style>
+  :root{
+    --blue:#001965; --bg:#27427E; --lblue:#3B97DE; --tint:#B1D5F2; --magenta:#C6007E;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:radial-gradient(120% 120% at 50% 45%, #35528F 0%, var(--bg) 55%, #1B3060 100%);
+    color:#fff;overflow:hidden;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;
+  }
+  .serif{font-family:Georgia,'Times New Roman',serif;font-style:italic;}
+
+  /* dreamy backdrop + grain (the campaign's editorial look) */
+  #backBull{
+    position:fixed;left:50%;top:55%;translate:-50% -50%;width:80vmax;
+    opacity:.08;filter:blur(7px);pointer-events:none;z-index:1;
+  }
+  #grain{position:fixed;inset:0;pointer-events:none;opacity:.5;z-index:3;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  #game{position:fixed;inset:0;z-index:2;}
+
+  /* header */
+  header{position:fixed;top:0;left:0;right:0;z-index:6;text-align:center;padding-top:14px;pointer-events:none;}
+  header img{width:74px;opacity:.95;}
+  #chainWrap{margin-top:6px;line-height:1;}
+  #chain{font-size:min(15vw,84px);color:rgba(255,255,255,.9);text-shadow:0 2px 26px rgba(0,25,101,.4);}
+  #chainLbl{font-size:10.5px;letter-spacing:3px;font-weight:700;color:rgba(226,240,250,.85);margin-top:4px;}
+  #hint{
+    position:fixed;left:0;right:0;bottom:9%;z-index:6;text-align:center;pointer-events:none;
+    font-size:13px;font-weight:600;font-style:italic;color:rgba(255,255,255,.9);
+    transition:opacity .4s;
+  }
+
+  /* overlays */
+  .ov{
+    position:fixed;inset:0;z-index:20;display:none;
+    align-items:center;justify-content:center;flex-direction:column;text-align:center;
+    padding:24px;background:rgba(18,35,80,.14);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+  }
+  .ov.on{display:flex;}
+  .ovTitle{font-size:min(12.5vw,64px);line-height:1.08;font-weight:400;
+    text-shadow:0 4px 40px rgba(0,25,101,.45);}
+  .ovSub{font-size:14.5px;font-weight:600;color:rgba(238,246,252,.98);margin-top:14px;max-width:340px;line-height:1.6;}
+  .pill{
+    margin-top:26px;background:#fff;color:var(--blue);border:none;border-radius:50px;
+    padding:14px 44px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:800;letter-spacing:2px;
+    box-shadow:0 8px 30px rgba(0,17,63,.35);
+  }
+  .pill:active{transform:scale(.97);}
+  .ovFoot{position:absolute;bottom:24px;left:0;right:0;font-size:10px;letter-spacing:2.2px;font-weight:700;color:rgba(226,240,250,.85);line-height:1.7;}
+  .ovFoot b{color:#fff;}
+  #endScore{font-size:min(20vw,110px);line-height:1;margin-top:6px;}
+  #endOf{font-size:11px;letter-spacing:3px;font-weight:700;color:rgba(226,240,250,.9);margin-top:2px;}
+  #endBest{font-size:12px;font-weight:700;color:#FF9AD1;margin-top:10px;}
+  #corp{
+    margin-top:16px;font-size:12px;font-weight:600;color:rgba(238,246,252,.95);
+  }
+  #corp a{color:#fff;font-weight:800;text-decoration:underline;pointer-events:auto;}
+</style>
+</head>
+<body>
+
+<img id="backBull" src="assets/novo-bull-solo-white.png" alt="">
+<canvas id="game"></canvas>
+<div id="grain"></div>
+
+<header>
+  <img src="assets/novo-logo-white.png" alt="Novo Nordisk">
+  <div id="chainWrap"><span id="chain" class="serif">45</span>
+  <div id="chainLbl">MOMENTS ADRIFT</div></div>
+</header>
+<div id="hint">One tap. That is all you get.</div>
+
+<div class="ov on" id="ovTitle">
+  <div class="ovTitle serif">The Ripple<br>Effect</div>
+  <div class="ovSub">One tap makes one ripple. Everything it touches ripples too. See how far one small action can go.</div>
+  <button class="pill" id="btnStart">◍ &nbsp;DROP IN</button>
+  <div class="ovFoot">NOVO NORDISK · GAMESCOM 2026</div>
+</div>
+
+<div class="ov" id="ovEnd">
+  <div class="ovTitle serif" id="endTitle">A wave.</div>
+  <div id="endScore" class="serif">0</div>
+  <div id="endOf">OF 45 MOMENTS REACHED</div>
+  <div id="endBest"></div>
+  <div class="ovSub" id="endLine"></div>
+  <button class="pill" id="btnAgain">ONE MORE TAP</button>
+  <div id="corp">Curious what we do while you wait? <a href="https://www.novonordisk.com" target="_blank" rel="noopener">novonordisk.com</a></div>
+  <div class="ovFoot">SOME THINGS ARE WORTH THE WAIT.<br><b>YOUR HEALTH ISN&rsquo;T.</b></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const SAVE_KEY='novo-effect-v1';
+const N_ORBS=45;
+const RANKS=[
+  [0,  'A drop.',     'It lands. Next one goes further.'],
+  [10, 'A ripple.',   'It moved. It reached. Keep going.'],
+  [20, 'A wave.',     'One tap. Look how much it moved.'],
+  [30, 'A surge.',    'Almost everything felt your one tap.'],
+  [40, 'A movement.', 'One small action. The whole pool answered.'],
+];
+
+let S={best:0,plays:0};
+try{const r=localStorage.getItem(SAVE_KEY); if(r){const p=JSON.parse(r); if(p&&typeof p.best==='number') S=Object.assign(S,p);}}catch(e){}
+
+const $=id=>document.getElementById(id);
+const cv=$('game'), g=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function layout(){
+  DPR=Math.min(devicePixelRatio||1,2);
+  W=innerWidth; H=innerHeight;
+  if(W<100||H<100){ W=Math.max(W,360); H=Math.max(H,640); }
+  cv.width=W*DPR; cv.height=H*DPR;
+  cv.style.width=W+'px'; cv.style.height=H+'px';
+  g.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize',()=>{layout(); if(mode==='title'||mode==='armed') makeField();});
+
+/* ---------- audio: the cascade becomes a melody ---------- */
+let AC=null;
+const SCALE=[262,294,330,392,440,523,587,659,784,880,1047,1175,1319];
+function pluck(i,gain=0.09,dur=0.5){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const f=SCALE[Math.min(i,SCALE.length-1)];
+    const o=AC.createOscillator(),gn=AC.createGain();
+    o.type='sine'; o.frequency.value=f;
+    gn.gain.setValueAtTime(gain,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+    o.connect(gn); gn.connect(AC.destination);
+    o.start(); o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+function deepDrop(){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),gn=AC.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(220,AC.currentTime);
+    o.frequency.exponentialRampToValueAtTime(70,AC.currentTime+0.5);
+    gn.gain.setValueAtTime(0.16,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.6);
+    o.connect(gn); gn.connect(AC.destination);
+    o.start(); o.stop(AC.currentTime+0.6);
+  }catch(e){}
+}
+
+/* ---------- game state ---------- */
+let mode='title';   // title | armed | cascade | end
+let orbs=[], ripples=[], chain=0, endTimer=0, cascadeT=0;
+const CASCADE_CAP=8;   // seconds — after this, rings finish but stop catching
+const orbR=()=>Math.max(8,Math.min(13,Math.min(W,H)*0.016));
+const RMAX=()=>Math.min(W,H)*0.24;
+
+function makeField(){
+  orbs=[]; ripples=[]; chain=0;
+  const r=orbR();
+  const top=H*0.20, bot=H*0.88;
+  let tries=0;
+  while(orbs.length<N_ORBS && tries<4000){
+    tries++;
+    const x=r*3+Math.random()*(W-r*6);
+    const y=top+Math.random()*(bot-top);
+    if(orbs.some(o=>Math.hypot(o.x-x,o.y-y)<r*4.2)) continue;
+    const a=Math.random()*Math.PI*2, sp=10+Math.random()*26;
+    orbs.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r,alive:true,mag:false,ph:Math.random()*7});
+  }
+  // one magenta amplifier orb
+  if(orbs.length) orbs[Math.floor(Math.random()*orbs.length)].mag=true;
+  paintChain();
+}
+function paintChain(){
+  if(mode==='cascade'||mode==='end'){
+    $('chain').textContent=chain;
+    $('chainLbl').textContent='MOMENTS REACHED';
+  }else{
+    $('chain').textContent=orbs.filter(o=>o.alive).length||N_ORBS;
+    $('chainLbl').textContent='MOMENTS ADRIFT';
+  }
+}
+
+function addRipple(x,y,scale,delay){
+  ripples.push({x,y,t:-delay,maxR:RMAX()*scale,r:0,dead:false});
+}
+
+/* ---------- input: the one tap ---------- */
+addEventListener('pointerdown',e=>{
+  if(mode!=='armed') return;
+  mode='cascade';
+  cascadeT=0;
+  $('hint').style.opacity=0;
+  deepDrop();
+  if(navigator.vibrate) navigator.vibrate(12);
+  addRipple(e.clientX,e.clientY,1,0);
+  paintChain();
+});
+
+/* ---------- overlay flow ---------- */
+function show(id){
+  ['ovTitle','ovEnd'].forEach(o=>$(o).classList.remove('on'));
+  if(id) $(id).classList.add('on');
+}
+function arm(){
+  show(null);
+  layout();
+  makeField();
+  mode='armed';
+  $('hint').textContent='One tap. That is all you get.';
+  $('hint').style.opacity=1;
+}
+$('btnStart').addEventListener('click',()=>{pluck(7,.08,.3);arm();});
+$('btnAgain').addEventListener('click',()=>{pluck(7,.08,.3);arm();});
+
+/* ---------- end ---------- */
+function finish(){
+  mode='end';
+  S.plays++;
+  const isBest=chain>S.best;
+  if(isBest) S.best=chain;
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));}catch(e){}
+  let rank=RANKS[0];
+  for(const rk of RANKS) if(chain>=rk[0]) rank=rk;
+  $('endTitle').textContent=rank[1];
+  $('endScore').textContent=chain;
+  $('endLine').textContent=rank[2];
+  $('endBest').textContent=isBest?'\u{1F389} NEW PERSONAL BEST':'Personal best: '+S.best;
+  pluck(8,.1,.6); setTimeout(()=>pluck(10,.1,.7),160); setTimeout(()=>pluck(12,.11,.9),340);
+  if(navigator.vibrate) navigator.vibrate([15,40,15,40,25]);
+  setTimeout(()=>show('ovEnd'),450);
+}
+
+/* ---------- simulation ---------- */
+function step(dt){
+  // orbs drift
+  for(const o of orbs){
+    if(!o.alive) continue;
+    o.x+=o.vx*dt; o.y+=o.vy*dt;
+    o.ph+=dt;
+    if(o.x<o.r*2){o.x=o.r*2;o.vx=Math.abs(o.vx);}
+    if(o.x>W-o.r*2){o.x=W-o.r*2;o.vx=-Math.abs(o.vx);}
+    if(o.y<H*0.18){o.y=H*0.18;o.vy=Math.abs(o.vy);}
+    if(o.y>H*0.90){o.y=H*0.90;o.vy=-Math.abs(o.vy);}
+  }
+  if(mode!=='cascade') return;
+  cascadeT+=dt;
+  // ripples expand: grow 0.55s (easeOut), hold 0.45s, fade 0.3s
+  let anyActive=false;
+  for(const rp of ripples){
+    rp.t+=dt;
+    if(rp.t<0){ anyActive=true; continue; }        // delayed birth
+    const G=0.55, HOLD=0.45, F=0.3;
+    if(rp.t<G){ const u=rp.t/G; rp.r=rp.maxR*(1-(1-u)*(1-u)); anyActive=true; }
+    else if(rp.t<G+HOLD){ rp.r=rp.maxR; anyActive=true; }
+    else if(rp.t<G+HOLD+F){ rp.r=rp.maxR; anyActive=true; rp.fading=true; }
+    else rp.dead=true;
+    // collisions only while growing or holding (and inside the cascade window)
+    if(rp.t>=0 && rp.t<G+HOLD && cascadeT<CASCADE_CAP){
+      for(const o of orbs){
+        if(!o.alive) continue;
+        if(Math.hypot(o.x-rp.x,o.y-rp.y)<=rp.r+o.r){
+          o.alive=false;
+          chain++;
+          addRipple(o.x,o.y,o.mag?1.5:0.8, 0.09);
+          pluck(Math.min(chain,SCALE.length-1),0.08,0.45);
+          if(navigator.vibrate) navigator.vibrate(4);
+          o.popT=0;
+        }
+      }
+    }
+  }
+  ripples=ripples.filter(r=>!r.dead);
+  paintChain();
+  if(!anyActive){
+    endTimer+=dt;
+    if(endTimer>0.7) finish();
+  }else endTimer=0;
+}
+
+/* ---------- render ---------- */
+function render(){
+  g.clearRect(0,0,W,H);
+  // orbs
+  for(const o of orbs){
+    if(!o.alive){
+      if(o.popT!==undefined && o.popT<0.3){
+        o.popT+=1/60;
+        const u=o.popT/0.3;
+        g.globalAlpha=1-u;
+        g.fillStyle='#fff';
+        g.beginPath(); g.arc(o.x,o.y,o.r*(1+u*1.6),0,7); g.fill();
+        g.globalAlpha=1;
+      }
+      continue;
+    }
+    const bob=Math.sin(o.ph*1.4)*1.5;
+    const grd=g.createRadialGradient(o.x-3,o.y-3+bob,1,o.x,o.y+bob,o.r);
+    if(o.mag){ grd.addColorStop(0,'#FFD7EE'); grd.addColorStop(.6,'#C6007E'); grd.addColorStop(1,'#7D0050'); }
+    else{ grd.addColorStop(0,'#EAF4FC'); grd.addColorStop(.55,'#9FD0F5'); grd.addColorStop(1,'#3B97DE'); }
+    g.shadowColor=o.mag?'rgba(198,0,126,.8)':'rgba(159,208,245,.7)';
+    g.shadowBlur=o.mag?16:10;
+    g.fillStyle=grd;
+    g.beginPath(); g.arc(o.x,o.y+bob,o.r,0,7); g.fill();
+    g.shadowBlur=0;
+  }
+  // ripples: thin white logo-circles
+  for(const rp of ripples){
+    if(rp.t<0||rp.r<=0) continue;
+    const G=0.55, HOLD=0.45, F=0.3;
+    let a=0.85;
+    if(rp.t>G+HOLD) a=0.85*(1-(rp.t-G-HOLD)/F);
+    else if(rp.t>G) a=0.55+0.3*(1-(rp.t-G)/HOLD);
+    g.globalAlpha=Math.max(a,0);
+    g.strokeStyle='#fff';
+    g.lineWidth=3;
+    g.shadowColor='rgba(255,255,255,.55)'; g.shadowBlur=12;
+    g.beginPath(); g.arc(rp.x,rp.y,rp.r,0,7); g.stroke();
+    g.shadowBlur=0;
+    // faint inner fill wash
+    g.globalAlpha=Math.max(a*0.10,0);
+    g.fillStyle='#fff';
+    g.beginPath(); g.arc(rp.x,rp.y,rp.r,0,7); g.fill();
+    g.globalAlpha=1;
+  }
+}
+
+/* ---------- loop ---------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min((now-last)/1000,0.033); last=now;
+  if(mode==='armed'||mode==='cascade') step(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+addEventListener('visibilitychange',()=>{ last=performance.now(); });
+
+layout();
+makeField();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

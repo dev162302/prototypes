@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FIVE SECONDS — Novo Nordisk × Gamescom</title>
+<meta name="description" content="You've got five seconds of waiting. Make them count.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --true:#001965;
+    --light:#3B97DE;
+    --tint15:#E2F0FA;
+    --tint40:#B1D5F2;
+    --magenta:#C6007E;
+    --white:#FFFFFF;
+    --dim:rgba(226,240,250,.62);
+    --line:rgba(226,240,250,.22);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--true);color:var(--white);font-family:'Apis','Source Sans 3',system-ui,sans-serif;
+    overflow:hidden;-webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  #stage{position:fixed;inset:0;height:100dvh;
+    background:
+      radial-gradient(120% 80% at 50% 112%, rgba(59,151,222,.2) 0%, transparent 58%),
+      radial-gradient(90% 60% at 50% -12%, rgba(59,151,222,.12) 0%, transparent 55%),
+      var(--true)}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  #hud{position:absolute;top:0;left:0;right:0;padding:calc(14px + env(safe-area-inset-top)) 18px 0;
+    display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:5}
+  #bestChip{font-size:12px;font-weight:700;letter-spacing:.2em;color:var(--dim);padding-top:10px}
+  #soundBtn{pointer-events:auto;background:none;border:1px solid var(--line);color:var(--dim);
+    width:38px;height:38px;border-radius:50px;font-size:16px;cursor:pointer}
+
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;padding:32px 24px;z-index:10;
+    background:rgba(0,25,101,.62);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    opacity:1;transition:opacity .3s}
+  .overlay.hidden{opacity:0;pointer-events:none}
+  .eyebrow{font-size:11px;font-weight:600;letter-spacing:.32em;color:var(--dim);margin-bottom:16px}
+  .eyebrow .hx{color:var(--light)}
+  h1{font-weight:300;font-size:clamp(44px,13vw,72px);letter-spacing:.05em;line-height:1.05;color:var(--white)}
+  h1 b{font-weight:700}
+  .sub{margin-top:18px;max-width:300px;color:var(--dim);font-size:15px;line-height:1.55}
+  .sub b{color:var(--tint40);font-weight:600}
+  .btn{margin-top:32px;font-family:inherit;font-weight:700;font-size:15px;letter-spacing:.1em;
+    color:var(--true);background:var(--white);border:none;cursor:pointer;
+    padding:16px 46px;border-radius:50px;box-shadow:0 0 34px rgba(226,240,250,.28);transition:transform .12s}
+  .btn:active{transform:scale(.95)}
+  .btn.ghost{background:transparent;color:var(--dim);border:1px solid var(--line);
+    box-shadow:none;margin-top:14px;padding:12px 32px;font-size:12px;letter-spacing:.14em}
+  a.btn.ghost{display:inline-block;text-decoration:none}
+  .claim{margin-top:34px;font-weight:300;font-size:13px;letter-spacing:.14em;line-height:1.8;color:var(--dim)}
+  .claim b{font-weight:700;color:var(--white)}
+  .lockup{position:absolute;right:18px;bottom:calc(16px + env(safe-area-inset-bottom));
+    width:92px;opacity:.95}
+  .lockup img{width:100%;display:block}
+
+  #finalScore{font-weight:700;font-size:clamp(72px,24vw,130px);line-height:1;
+    font-variant-numeric:tabular-nums;text-shadow:0 0 40px rgba(59,151,222,.45)}
+  .statRow{display:flex;gap:28px;margin-top:14px;font-size:13px;color:var(--dim);letter-spacing:.1em}
+  .statRow b{color:var(--white);font-size:18px}
+  #nameForm{margin-top:24px;display:flex;gap:10px}
+  #nameInput{width:170px;background:rgba(226,240,250,.08);border:1px solid var(--line);border-radius:50px;
+    color:var(--white);font-family:inherit;font-size:15px;font-weight:600;
+    letter-spacing:.06em;padding:13px 18px;text-align:center;outline:none}
+  #nameInput::placeholder{color:var(--dim)}
+  #nameInput:focus{border-color:var(--light)}
+  #saveBtn{background:var(--light);color:var(--white);border:none;border-radius:50px;
+    font-family:inherit;font-weight:700;font-size:13px;letter-spacing:.08em;padding:0 22px;cursor:pointer}
+  .newBest{margin-top:10px;color:#FF5EB8;font-size:12px;font-weight:700;letter-spacing:.3em}
+
+  #board{width:100%;max-width:340px;margin-top:24px;display:flex;flex-direction:column;gap:6px}
+  .row{display:flex;align-items:center;gap:14px;background:rgba(226,240,250,.07);border:1px solid var(--line);
+    border-radius:50px;padding:11px 20px;font-size:14px}
+  .row .rk{font-weight:700;width:26px;color:var(--dim)}
+  .row .nm{flex:1;text-align:left;font-weight:600;letter-spacing:.04em;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .row .sc{font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+  .row.top1 .rk,.row.top1 .sc{color:var(--light)}
+  .row.me{border-color:var(--magenta);box-shadow:0 0 18px rgba(198,0,126,.3)}
+  .row.me .nm{color:#FF5EB8}
+
+  @media (prefers-reduced-motion:reduce){.overlay{transition:none}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv"></canvas>
+
+  <div id="hud" style="visibility:hidden">
+    <div id="bestChip">BEST 0</div>
+    <button id="soundBtn" aria-label="Toggle sound">♪</button>
+  </div>
+
+  <div class="overlay" id="menu">
+    <div class="eyebrow">NOVO NORDISK <span class="hx">·</span> GAMESCOM 2026</div>
+    <h1>FIVE<br><b>SECONDS</b></h1>
+    <p class="sub">That's how long you'll wait for this queue to move anyway. First tap starts the clock — then tap like your <b>thumb owes you money</b>.</p>
+    <button class="btn" id="startBtn">I'M READY</button>
+    <button class="btn ghost" id="menuBoardBtn">LEADERBOARD</button>
+    <div class="lockup"><img src="assets/novo-logo-white.png" alt="Novo Nordisk"></div>
+  </div>
+
+  <div class="overlay hidden" id="over">
+    <div class="eyebrow">TIME'S UP</div>
+    <div id="finalScore">0</div>
+    <div class="newBest" id="newBest" style="display:none">NEW PERSONAL BEST</div>
+    <div class="statRow">
+      <span>TAPS / SECOND <b id="statTps">0</b></span>
+      <span>BOOTH RECORD <b id="statRecord">68</b></span>
+    </div>
+    <form id="nameForm">
+      <input id="nameInput" maxlength="12" placeholder="Your tag" autocomplete="off" spellcheck="false">
+      <button type="submit" id="saveBtn">SAVE</button>
+    </form>
+    <button class="btn" id="retryBtn">GO AGAIN</button>
+    <div class="claim">SOME THINGS ARE WORTH THE WAIT.<br><b>YOUR HEALTH ISN'T.</b></div>
+    <a class="btn ghost" href="https://www.novonordisk.de" target="_blank" rel="noopener">MORE AT NOVONORDISK.DE</a>
+    <div class="lockup"><img src="assets/novo-logo-white.png" alt="Novo Nordisk"></div>
+  </div>
+
+  <div class="overlay hidden" id="boardScreen">
+    <div class="eyebrow">FASTEST THUMBS <span class="hx">·</span> FIVE SECONDS</div>
+    <div id="board"></div>
+    <button class="btn" id="boardPlayBtn">GO AGAIN</button>
+    <div class="lockup"><img src="assets/novo-logo-white.png" alt="Novo Nordisk"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let W=0,H=0,DPR=1,CX=0,CY=0,R=0;
+function resize(){
+  DPR = Math.min(devicePixelRatio||1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  CX = W/2; CY = H*0.5;
+  R = Math.min(W*0.36, H*0.24);
+}
+addEventListener('resize', resize); resize();
+
+const DURATION = 5;
+const S = {
+  mode:'menu',            // menu | armed | tapping | over | board
+  taps:0, timeLeft:DURATION,
+  pop:0,                  // counter scale pop
+};
+const ripples=[], sparks=[];
+const store = {
+  get best(){ return +localStorage.nvt_best||0 }, set best(v){ localStorage.nvt_best=v },
+  get name(){ return localStorage.nv_name||'' }, set name(v){ localStorage.nv_name=v },
+  get muted(){ return localStorage.nv_muted==='1' }, set muted(v){ localStorage.nv_muted=v?'1':'0' },
+  get board(){ try{ return JSON.parse(localStorage.nvt_board)||[] }catch(e){ return [] } },
+  set board(v){ localStorage.nvt_board = JSON.stringify(v) },
+};
+
+let AC=null;
+function beep(freq,dur,type='square',gain=0.045,slide=0){
+  if(store.muted) return;
+  if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)();
+  if(AC.state==='suspended') AC.resume();
+  const o=AC.createOscillator(), g=AC.createGain(), t=AC.currentTime;
+  o.type=type; o.frequency.setValueAtTime(freq,t);
+  if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,freq+slide), t+dur);
+  g.gain.setValueAtTime(gain,t);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(AC.destination);
+  o.start(t); o.stop(t+dur);
+}
+function buzz(p){ if(navigator.vibrate && !store.muted) navigator.vibrate(p) }
+
+function startGame(){
+  Object.assign(S,{mode:'armed',taps:0,timeLeft:DURATION,pop:0});
+  ripples.length=sparks.length=0;
+  $('bestChip').textContent = 'BEST ' + store.best;
+  show('menu',false); show('over',false); show('boardScreen',false);
+  $('hud').style.visibility='visible';
+  beep(440,.08,'square',.04,220);
+}
+function endGame(){
+  S.mode='over';
+  $('hud').style.visibility='hidden';
+  $('finalScore').textContent = S.taps;
+  $('statTps').textContent = (S.taps/DURATION).toFixed(1);
+  const isBest = S.taps > store.best;
+  if(isBest) store.best = S.taps;
+  $('newBest').style.display = isBest ? 'block':'none';
+  $('nameInput').value = store.name;
+  $('nameForm').style.display='flex';
+  show('over',true);
+  beep(880,.1,'square',.05); setTimeout(()=>beep(660,.14,'square',.05),90);
+  buzz([20,40,20]);
+}
+
+function tap(e){
+  if(S.mode!=='armed' && S.mode!=='tapping') return;
+  if(S.mode==='armed') S.mode='tapping';   // first tap starts the clock
+  S.taps++;
+  S.pop = 1;
+  const x = e && e.clientX ? e.clientX : CX;
+  const y = e && e.clientY ? e.clientY : CY;
+  ripples.push({x, y, r: 8, a: .8});
+  if(!reduceMotion && S.taps % 5 === 0){
+    for(let i=0;i<6;i++){
+      const a=Math.random()*Math.PI*2, v=1.5+Math.random()*2;
+      sparks.push({x:CX+Math.cos(a)*R, y:CY+Math.sin(a)*R,
+        vx:Math.cos(a)*v, vy:Math.sin(a)*v, t:0, life:.4});
+    }
+  }
+  beep(420 + Math.min(S.taps,80)*8, .035, 'square', .035);
+  buzz(6);
+}
+cv.addEventListener('pointerdown', tap);
+addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); tap(); } });
+
+function show(id,on){ $(id).classList.toggle('hidden',!on) }
+
+const SEEDS = [
+  ['THUMBWAR',68],['carl.cgn',61],['fast.fee',57],['lane_lena',52],
+  ['hall7hero',46],['tap.zwei',39],['one.finger',31],['slowpoke',18],
+];
+function renderBoard(){
+  const mine = store.board.map(e=>({...e,me:true}));
+  const all = [...SEEDS.map(([n,s])=>({n,s})), ...mine].sort((a,b)=>b.s-a.s).slice(0,10);
+  $('board').innerHTML = all.map((e,i)=>
+    `<div class="row ${i===0?'top1':''} ${e.me?'me':''}">
+      <span class="rk">${i+1}</span><span class="nm">${e.n.replace(/[<>&]/g,'')}</span>
+      <span class="sc">${e.s}</span></div>`).join('');
+}
+$('nameForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  const n = $('nameInput').value.trim().slice(0,12) || 'ANON';
+  store.name = n;
+  store.board = [...store.board, {n, s:S.taps}];
+  $('nameForm').style.display='none';
+  renderBoard(); show('over',false); show('boardScreen',true); S.mode='board';
+});
+$('startBtn').addEventListener('click', startGame);
+$('retryBtn').addEventListener('click', startGame);
+$('boardPlayBtn').addEventListener('click', startGame);
+$('menuBoardBtn').addEventListener('click', ()=>{ renderBoard(); show('menu',false); show('boardScreen',true); S.mode='board'; });
+const sndBtn = $('soundBtn');
+function syncSnd(){ sndBtn.textContent = store.muted ? '✕' : '♪'; }
+sndBtn.addEventListener('click', ()=>{ store.muted = !store.muted; syncSnd(); });
+syncSnd();
+
+/* seamless hand-off: the landing embeds this page (?embed=1 shows the idle field),
+   then signals start via postMessage; direct links use ?autostart=1 */
+const qp = new URLSearchParams(location.search);
+if(qp.get('embed')==='1') show('menu', false);
+if(qp.get('autostart')==='1') startGame();
+addEventListener('message', e=>{ if(e.data==='novo-start' && S.mode!=='armed' && S.mode!=='tapping') startGame(); });
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.033,(now-last)/1000); last=now;
+
+  if(S.mode==='tapping'){
+    S.timeLeft -= dt;
+    if(S.timeLeft <= 0){ S.timeLeft = 0; endGame(); }
+  }
+  S.pop = Math.max(0, S.pop - dt*6);
+
+  ctx.clearRect(0,0,W,H);
+
+  const inGame = S.mode==='armed' || S.mode==='tapping';
+  if(inGame){
+    // countdown ring — the loader draining
+    ctx.beginPath(); ctx.arc(CX,CY,R,0,Math.PI*2);
+    ctx.strokeStyle='rgba(226,240,250,.14)'; ctx.lineWidth=12; ctx.stroke();
+    const frac = S.timeLeft/DURATION;
+    ctx.beginPath();
+    ctx.arc(CX,CY,R,-Math.PI/2,-Math.PI/2 + Math.PI*2*frac);
+    ctx.strokeStyle = frac < 0.25 ? '#C6007E' : '#3B97DE';
+    ctx.lineWidth=12; ctx.lineCap='round';
+    ctx.shadowColor = frac < 0.25 ? 'rgba(198,0,126,.8)' : 'rgba(59,151,222,.8)';
+    ctx.shadowBlur=16; ctx.stroke(); ctx.shadowBlur=0;
+
+    // tap counter
+    const scale = 1 + S.pop*0.14;
+    ctx.save(); ctx.translate(CX,CY); ctx.scale(scale,scale);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=`700 ${Math.round(R*0.62)}px 'Source Sans 3',sans-serif`;
+    ctx.fillStyle='#FFFFFF';
+    ctx.shadowColor='rgba(59,151,222,.5)'; ctx.shadowBlur=24;
+    ctx.fillText(S.taps, 0, -6);
+    ctx.shadowBlur=0;
+    ctx.font=`600 15px 'Source Sans 3',sans-serif`;
+    ctx.fillStyle='rgba(226,240,250,.62)';
+    ctx.letterSpacing='3px';
+    ctx.fillText(S.mode==='armed' ? 'TAP TO START' : S.timeLeft.toFixed(1)+'s', 0, R*0.42);
+    ctx.letterSpacing='0px';
+    ctx.restore();
+  }
+
+  // tap ripples
+  for(let i=ripples.length-1;i>=0;i--){
+    const r=ripples[i]; r.r+=dt*260; r.a-=dt*2.6;
+    if(r.a<=0){ripples.splice(i,1);continue}
+    ctx.beginPath(); ctx.arc(r.x,r.y,r.r,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(177,213,242,${r.a})`; ctx.lineWidth=2.5; ctx.stroke();
+  }
+  // milestone sparks
+  for(let i=sparks.length-1;i>=0;i--){
+    const p=sparks[i]; p.t+=dt;
+    if(p.t>p.life){sparks.splice(i,1);continue}
+    p.x+=p.vx*dt*90; p.y+=p.vy*dt*90;
+    const f=1-p.t/p.life;
+    ctx.beginPath(); ctx.arc(p.x,p.y,2.5*f,0,Math.PI*2);
+    ctx.fillStyle=`rgba(59,151,222,${f})`; ctx.fill();
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

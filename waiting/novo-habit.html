@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HABIT HERO — The Waiting Game</title>
+<style>
+  :root{
+    --blue:#001965; --blue2:#00113F; --lblue:#3B97DE; --tint1:#E2F0FA; --tint2:#B1D5F2;
+    --magenta:#C6007E; --white:#fff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html{height:100%;}
+  body{
+    min-height:100%;
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.02) 0 3px, transparent 3px 46px),
+      linear-gradient(180deg,#002B7A 0%, var(--blue) 45%, #000E38 100%) fixed;
+    color:var(--white);
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;
+    display:flex;flex-direction:column;align-items:center;
+  }
+
+  header{width:100%;max-width:520px;padding:16px 18px 4px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .hTitle{font-size:16px;font-weight:800;letter-spacing:3px;}
+  .hSub{font-size:9.5px;letter-spacing:2px;color:var(--tint2);margin-top:3px;font-weight:600;}
+  .hRight{text-align:right;font-size:11px;color:var(--tint2);font-weight:600;}
+  .hRight b{color:#fff;font-size:14px;font-variant-numeric:tabular-nums;}
+
+  #score{
+    font-size:40px;font-weight:800;line-height:1;text-align:center;margin-top:4px;
+    text-shadow:0 0 26px rgba(59,151,222,.6);font-variant-numeric:tabular-nums;
+  }
+  .scoreLbl{font-size:10px;letter-spacing:3px;color:var(--lblue);text-align:center;font-weight:700;margin-top:3px;}
+  #tip{
+    margin:8px 0 4px;font-size:11.5px;font-style:italic;font-weight:600;color:var(--tint2);
+    text-align:center;padding:0 20px;transition:opacity .4s;min-height:15px;
+  }
+
+  #list{width:100%;max-width:520px;padding:8px 14px calc(90px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;}
+  .habit{
+    position:relative;background:rgba(255,255,255,.07);
+    border:1.5px solid rgba(177,213,242,.28);border-radius:18px;
+    padding:12px 14px 13px;cursor:pointer;overflow:hidden;
+    transition:transform .08s;
+  }
+  .habit:active{transform:scale(.985);}
+  .habit.done{border-color:var(--lblue);}
+  .hTop{display:flex;align-items:center;gap:11px;}
+  .hIcon{font-size:30px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));}
+  .hName{font-size:15px;font-weight:800;letter-spacing:.4px;}
+  .hMeta{font-size:10.5px;color:var(--tint2);font-weight:600;margin-top:1px;}
+  .hLvl{
+    margin-left:auto;font-size:10.5px;font-weight:800;color:var(--blue);
+    background:#fff;border-radius:50px;padding:3px 11px;white-space:nowrap;
+  }
+  .barWrap{
+    margin-top:10px;height:12px;border-radius:50px;background:rgba(0,17,63,.55);
+    overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,.4);
+  }
+  .bar{
+    height:100%;width:0;border-radius:50px;
+    background:linear-gradient(90deg,var(--lblue),#7FC0F0);
+    box-shadow:0 0 10px rgba(59,151,222,.7);
+  }
+  .habit.done .bar{background:linear-gradient(90deg,#C6007E,#FF6EB8);box-shadow:0 0 12px rgba(198,0,126,.8);}
+  .upBtn{
+    margin-top:9px;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.5px;
+    background:rgba(255,255,255,.1);border:1.5px solid rgba(177,213,242,.35);
+    color:var(--tint2);border-radius:50px;padding:4px 13px;
+  }
+  .habit .upBtn.can{background:#fff;color:var(--blue);border-color:#fff;}
+  .habit.lockedH{cursor:pointer;}
+  .habit.lockedH .hTop,.habit.lockedH .barWrap{filter:grayscale(.9);opacity:.45;}
+  .unlockTag{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:12.5px;font-weight:800;letter-spacing:1px;color:#fff;
+    background:rgba(0,17,63,.45);border-radius:18px;
+  }
+  .unlockTag span{background:rgba(0,25,101,.85);border:1.5px solid var(--lblue);border-radius:50px;padding:6px 16px;}
+  .habit.canUnlock .unlockTag span{background:#fff;color:var(--blue);border-color:#fff;}
+
+  .floatUp{
+    position:absolute;font-weight:800;font-size:16px;color:#fff;pointer-events:none;z-index:30;
+    text-shadow:0 2px 8px rgba(0,25,101,.9);right:16px;top:10px;
+    animation:riseUp 1s ease-out forwards;
+  }
+  .floatUp.mag{color:#FF9AD1;}
+  @keyframes riseUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-42px);}}
+
+  #banner{
+    position:fixed;left:50%;top:22%;translate:-50% 0;z-index:55;display:none;
+    font-size:24px;font-weight:800;text-align:center;pointer-events:none;color:#fff;
+    text-shadow:0 2px 14px rgba(0,25,101,.95);
+    animation:riseUp 3s ease-out forwards;
+  }
+  .logo{position:fixed;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));width:70px;opacity:.9;pointer-events:none;z-index:2;}
+  @media (min-width:700px){ .logo{width:86px;} }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="hTitle">HABIT HERO</div>
+      <div class="hSub">TINY HEALTHY HABITS · MASSIVE NUMBERS</div>
+    </div>
+    <div class="hRight"><b id="cpsVal">0</b>/sec</div>
+  </header>
+  <div id="score">0</div>
+  <div class="scoreLbl">CARE POINTS</div>
+  <div id="tip">Tap a habit to hurry it along. It completes on its own too.</div>
+
+  <div id="list"></div>
+
+  <div id="banner"></div>
+  <img class="logo" src="assets/novo-logo-white.png" alt="Novo Nordisk">
+
+<script>
+(() => {
+'use strict';
+
+const SAVE_KEY='novo-habit-v1';
+const HABITS=[
+  {id:'sip',    name:'Sip Water',    icon:'\u{1F4A7}', dur:4,   pay:5,    unlock:0,      toast:'Hydrated.'},
+  {id:'stretch',name:'Stretch',      icon:'\u{1F938}', dur:9,   pay:14,   unlock:0,      toast:'Loose and limber.'},
+  {id:'breathe',name:'Deep Breaths', icon:'\u{1F32C}️', dur:16,  pay:32,   unlock:150,    toast:'In... and out.'},
+  {id:'posture',name:'Stand Tall',   icon:'\u{1F9CD}', dur:28,  pay:70,   unlock:800,    toast:'Shoulders back.'},
+  {id:'walk',   name:'Walk a Lap',   icon:'\u{1F45F}', dur:55,  pay:170,  unlock:4000,   toast:'Steps in the bank.'},
+  {id:'snack',  name:'Smart Snack',  icon:'\u{1F34E}', dur:110, pay:420,  unlock:20000,  toast:'Fuel, not filler.'},
+  {id:'sun',    name:'Find Sunlight',icon:'☀️', dur:220, pay:1050, unlock:100000, toast:'Vitamin D acquired.'},
+  {id:'zen',    name:'Mini Meditation',icon:'\u{1F9D8}', dur:420, pay:2600, unlock:500000, toast:'Very zen.'},
+];
+const TIPS=[
+  'Tap a habit to hurry it along. It completes on its own too.',
+  'Real talk: you could actually do these in the queue.',
+  "Some things are worth the wait. Your health isn't.",
+  'Level a habit up and it pays double. Like real life.',
+  'The best routine is the one that runs by itself.',
+  'Water first. Everything else second.',
+];
+
+let S={pts:0, h:{}, seen:0};
+try{
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(raw){const p=JSON.parse(raw); if(p&&typeof p.pts==='number') S=Object.assign(S,p);}
+}catch(e){}
+HABITS.forEach(h=>{ if(!S.h[h.id]) S.h[h.id]={lvl:1,prog:0,on:h.unlock===0}; });
+
+const pay =h=>h.pay*Math.pow(2,S.h[h.id].lvl-1);
+const upCost=h=>Math.ceil(h.pay*14*Math.pow(2.3,S.h[h.id].lvl-1));
+const cps =()=>HABITS.reduce((a,h)=>a+(S.h[h.id].on?pay(h)/h.dur:0),0);
+
+const fmt=n=>{
+  n=Math.floor(n);
+  const T=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e4,'K']];
+  for(const [v,s] of T) if(n>=v) return (Math.floor(n/(v/10))/10).toLocaleString('en-US')+s;
+  return n.toLocaleString('en-US');
+};
+
+/* ---------- audio ---------- */
+let AC=null;
+function beep(f,dur=0.06,g=0.09,type='sine'){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),gn=AC.createGain();
+    o.type=type;o.frequency.value=f;
+    gn.gain.setValueAtTime(g,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+    o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+/* ---------- dom ---------- */
+const $=id=>document.getElementById(id);
+const list=$('list');
+const els={};
+HABITS.forEach(h=>{
+  const el=document.createElement('div');
+  el.className='habit';
+  el.innerHTML=`
+    <div class="hTop">
+      <span class="hIcon">${h.icon}</span>
+      <span><div class="hName">${h.name}</div><div class="hMeta" id="meta-${h.id}"></div></span>
+      <span class="hLvl" id="lvl-${h.id}"></span>
+    </div>
+    <div class="barWrap"><div class="bar" id="bar-${h.id}"></div></div>
+    <span class="upBtn" id="up-${h.id}"></span>
+    <div class="unlockTag" id="lock-${h.id}" style="display:none"><span></span></div>`;
+  list.appendChild(el);
+  els[h.id]=el;
+
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    const st=S.h[h.id];
+    if(!st.on){                                  // try unlock
+      if(S.pts>=h.unlock){ S.pts-=h.unlock; st.on=true; beep(740,.08,.1); setTimeout(()=>beep(1050,.1,.1),80); render(); save(); }
+      else beep(150,.08,.06,'square');
+      return;
+    }
+    if(e.target.id==='up-'+h.id){                 // level up
+      const c=upCost(h);
+      if(S.pts>=c){ S.pts-=c; st.lvl++; beep(740,.07,.1); setTimeout(()=>beep(1100,.09,.1),70);
+        if(navigator.vibrate) navigator.vibrate([10,30,10]); }
+      else beep(150,.08,.06,'square');
+      render(); return;
+    }
+    st.prog+=h.dur*0.12;                          // hurry tap
+    beep(480+Math.random()*80,.04,.06);
+    if(navigator.vibrate) navigator.vibrate(6);
+  });
+});
+
+function toast(h,txt,mag){
+  const f=document.createElement('div');
+  f.className='floatUp'+(mag?' mag':''); f.textContent=txt;
+  els[h.id].appendChild(f); setTimeout(()=>f.remove(),1000);
+}
+
+/* ---------- render ---------- */
+function render(){
+  $('score').textContent=fmt(S.pts);
+  const c=cps();
+  $('cpsVal').textContent=c<100?String(Math.round(c*10)/10):fmt(c);
+  HABITS.forEach(h=>{
+    const st=S.h[h.id], el=els[h.id];
+    const lock=$('lock-'+h.id);
+    if(!st.on){
+      el.classList.add('lockedH');
+      el.classList.toggle('canUnlock',S.pts>=h.unlock);
+      lock.style.display='flex';
+      lock.querySelector('span').textContent='UNLOCK · '+fmt(h.unlock);
+    }else{
+      el.classList.remove('lockedH'); lock.style.display='none';
+      $('meta-'+h.id).textContent='+'+fmt(pay(h))+' every '+h.dur+'s';
+      $('lvl-'+h.id).textContent='LVL '+st.lvl;
+      const up=$('up-'+h.id), c=upCost(h);
+      up.textContent='LEVEL UP · '+fmt(c);
+      up.classList.toggle('can',S.pts>=c);
+    }
+  });
+}
+
+/* ---------- progress ---------- */
+function step(dt){
+  HABITS.forEach(h=>{
+    const st=S.h[h.id];
+    if(!st.on) return;
+    st.prog+=dt;
+    while(st.prog>=h.dur){
+      st.prog-=h.dur;
+      S.pts+=pay(h);
+      toast(h,'+'+fmt(pay(h))+' · '+h.toast, st.lvl>=5);
+      els[h.id].classList.add('done');
+      setTimeout(()=>els[h.id].classList.remove('done'),450);
+      beep(660,.05,.07);
+    }
+    $('bar-'+h.id).style.width=Math.min(st.prog/h.dur*100,100)+'%';
+  });
+}
+
+/* ---------- offline + wall clock ---------- */
+let lastEarn=Date.now();
+function accrue(){
+  const now=Date.now();
+  let dt=(now-lastEarn)/1000; lastEarn=now;
+  if(dt<=0) return;
+  if(dt>3){                                     // background catch-up: whole completions
+    dt=Math.min(dt,2*3600);
+    let gain=0;
+    HABITS.forEach(h=>{
+      const st=S.h[h.id]; if(!st.on) return;
+      const total=st.prog+dt, n=Math.floor(total/h.dur);
+      st.prog=total-n*h.dur; gain+=n*pay(h);
+    });
+    if(gain>0) S.pts+=gain;
+    return;
+  }
+  step(dt);
+}
+setInterval(()=>{accrue();render();},1000);
+if(S.seen){
+  const away=Math.min((Date.now()-S.seen)/1000,2*3600);
+  let gain=0;
+  HABITS.forEach(h=>{
+    const st=S.h[h.id]; if(!st.on) return;
+    const total=st.prog+away, n=Math.floor(total/h.dur);
+    st.prog=total-n*h.dur; gain+=n*pay(h);
+  });
+  if(gain>1){ S.pts+=gain;
+    setTimeout(()=>{
+      const b=$('banner');
+      b.innerHTML='Welcome back!<br><span style="font-size:14px">Your habits kept going: +'+fmt(gain)+' care points.</span>';
+      b.style.display='block';
+      setTimeout(()=>{b.style.display='none';},2900);
+    },500);
+  }
+}
+
+/* ---------- tips ---------- */
+let tipI=0;
+setInterval(()=>{
+  const el=$('tip');
+  el.style.opacity=0;
+  setTimeout(()=>{ tipI=(tipI+1)%TIPS.length; el.textContent=TIPS[tipI]; el.style.opacity=1; },400);
+},8000);
+
+/* ---------- loop ---------- */
+let last=performance.now(), uiAcc=0, saveAcc=0;
+function frame(now){
+  const dt=Math.min((now-last)/1000,.25); last=now;
+  accrue();
+  lastEarn=Date.now();
+  uiAcc+=dt; if(uiAcc>0.4){ render(); uiAcc=0; }
+  saveAcc+=dt; if(saveAcc>5){ save(); saveAcc=0; }
+  requestAnimationFrame(frame);
+}
+function save(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({pts:S.pts,h:S.h,seen:Date.now()})); }catch(e){}
+}
+addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+
+render();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

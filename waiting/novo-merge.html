@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ORB MERGE — The Waiting Game</title>
+<style>
+  :root{
+    --blue:#001965; --blue2:#00113F; --lblue:#3B97DE; --tint1:#E2F0FA; --tint2:#B1D5F2;
+    --magenta:#C6007E; --white:#fff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.02) 0 3px, transparent 3px 46px),
+      linear-gradient(180deg,#002B7A 0%, var(--blue) 45%, #000E38 100%);
+    color:var(--white);overflow:hidden;
+    user-select:none;-webkit-user-select:none;touch-action:none;
+    display:flex;flex-direction:column;align-items:center;
+  }
+
+  header{width:100%;max-width:460px;padding:16px 18px 6px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .hTitle{font-size:16px;font-weight:800;letter-spacing:3px;}
+  .hSub{font-size:9.5px;letter-spacing:2px;color:var(--tint2);margin-top:3px;font-weight:600;}
+  .hRight{text-align:right;font-size:11px;color:var(--tint2);font-weight:600;}
+  .hRight b{color:#fff;font-size:14px;font-variant-numeric:tabular-nums;}
+
+  #score{
+    font-size:40px;font-weight:800;letter-spacing:-.5px;line-height:1;
+    text-shadow:0 0 26px rgba(59,151,222,.6);font-variant-numeric:tabular-nums;
+    text-align:center;margin-top:2px;
+  }
+  .scoreLbl{font-size:10px;letter-spacing:3px;color:var(--lblue);text-align:center;font-weight:700;margin-top:3px;}
+
+  #slogan{
+    margin-top:8px;font-size:11.5px;font-style:italic;font-weight:600;color:var(--tint2);
+    text-align:center;padding:0 20px;transition:opacity .4s;min-height:15px;
+  }
+
+  #boardWrap{flex:1;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;padding:10px 0;}
+  #board{
+    position:relative;
+    background:rgba(255,255,255,.05);
+    border:1.5px solid rgba(177,213,242,.25);border-radius:20px;
+    box-shadow:inset 0 4px 18px rgba(0,0,0,.35);
+  }
+  .slot{
+    position:absolute;border-radius:16px;
+    background:rgba(255,255,255,.05);
+    border:1.5px dashed rgba(177,213,242,.18);
+  }
+  .orb{
+    position:absolute;border-radius:50%;cursor:grab;z-index:5;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800;color:#fff;
+    box-shadow:inset 0 -6px 14px rgba(0,25,101,.5), inset 0 5px 12px rgba(255,255,255,.4), 0 4px 14px rgba(0,0,0,.4);
+    transition:left .18s ease, top .18s ease;
+    text-shadow:0 1px 4px rgba(0,25,101,.7);
+  }
+  .orb.drag{transition:none;z-index:20;cursor:grabbing;transform:scale(1.08);}
+  .orb.pop{animation:pop .3s ease;}
+  @keyframes pop{0%{transform:scale(.5);}60%{transform:scale(1.18);}100%{transform:scale(1);}}
+  .floatUp{
+    position:absolute;font-weight:800;font-size:17px;color:#fff;pointer-events:none;z-index:30;
+    text-shadow:0 2px 8px rgba(0,25,101,.9);
+    animation:riseUp 1s ease-out forwards;
+  }
+  @keyframes riseUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-56px);}}
+
+  #controls{width:100%;max-width:460px;padding:0 14px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:9px;}
+  #spawnBtn{
+    position:relative;overflow:hidden;
+    background:#fff;color:var(--blue);border:none;border-radius:50px;
+    font-family:inherit;font-size:15px;font-weight:800;letter-spacing:2px;
+    padding:13px 0;cursor:pointer;width:100%;
+  }
+  #spawnBtn:active{transform:scale(.98);}
+  #spawnBtn.wait{color:rgba(0,25,101,.35);}
+  #spawnCd{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(59,151,222,.25);}
+  #spawnTxt{position:relative;}
+  #ups{display:flex;gap:8px;}
+  .up{
+    flex:1;background:rgba(255,255,255,.08);border:1.5px solid rgba(177,213,242,.3);
+    border-radius:16px;padding:8px 6px;text-align:center;cursor:pointer;
+  }
+  .up:active{transform:scale(.96);}
+  .up.can{background:rgba(59,151,222,.25);border-color:var(--lblue);}
+  .up.max{opacity:.4;}
+  .upName{font-size:9.5px;font-weight:800;letter-spacing:1px;color:var(--tint2);}
+  .upVal{font-size:11px;font-weight:700;margin-top:2px;}
+  .upCost{
+    display:inline-block;margin-top:5px;font-size:10.5px;font-weight:800;
+    background:#fff;color:var(--blue);border-radius:50px;padding:2px 9px;
+  }
+
+  #banner{
+    position:fixed;left:50%;top:22%;translate:-50% 0;z-index:55;display:none;
+    font-size:24px;font-weight:800;text-align:center;pointer-events:none;color:#fff;
+    text-shadow:0 2px 14px rgba(0,25,101,.95);
+    animation:riseUp 3s ease-out forwards;
+  }
+  #banner .mag{color:#FF9AD1;}
+  .logo{position:fixed;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));width:70px;opacity:.9;pointer-events:none;z-index:2;}
+  @media (min-width:700px){ .logo{width:86px;} }
+  @media (max-width:560px){ .logo{display:none;} }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="hTitle">ORB MERGE</div>
+      <div class="hSub">DRAG TWO ALIKE · FORGE THE SUN DISC</div>
+    </div>
+    <div class="hRight"><b id="cpsVal">0</b>/sec<br>best: <span id="bestLvl">1</span></div>
+  </header>
+  <div id="score">0</div>
+  <div class="scoreLbl">ORBS COLLECTED</div>
+  <div id="slogan">Merge while you wait. It adds up.</div>
+
+  <div id="boardWrap"><div id="board"></div></div>
+
+  <div id="controls">
+    <button id="spawnBtn"><span id="spawnCd"></span><span id="spawnTxt">SPAWN ORB</span></button>
+    <div id="ups">
+      <div class="up" id="up-speed"><div class="upName">AUTO SPAWN</div><div class="upVal" id="v-speed"></div><span class="upCost" id="c-speed"></span></div>
+      <div class="up" id="up-lvl"><div class="upName">SPAWN TIER</div><div class="upVal" id="v-lvl"></div><span class="upCost" id="c-lvl"></span></div>
+      <div class="up" id="up-inc"><div class="upName">INCOME</div><div class="upVal" id="v-inc"></div><span class="upCost" id="c-inc"></span></div>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+  <img class="logo" src="assets/novo-logo-white.png" alt="Novo Nordisk">
+
+<script>
+(() => {
+'use strict';
+
+const COLS=4, ROWS=5, N=COLS*ROWS, MAXL=12;
+const SAVE_KEY='novo-merge-v1';
+
+const SLOGANS=[
+  'Merge while you wait. It adds up.',
+  'Small orbs, big picture.',
+  "Some things are worth the wait. Your health isn't.",
+  'Two alike make one better. Like good habits.',
+  'Patience compounds.',
+  'Keep going. The disc is close.',
+];
+
+let S={orbs:0, grid:Array(N).fill(0), ups:{speed:0,lvl:0,inc:0}, best:1, seen:0};
+try{
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(raw){const p=JSON.parse(raw); if(p&&Array.isArray(p.grid)&&p.grid.length===N) S=Object.assign(S,p);}
+}catch(e){}
+
+const spawnLvl=()=>1+S.ups.lvl;
+const autoInt=()=>Math.max(1.2, 5*Math.pow(0.82,S.ups.speed));
+const incMult=()=>Math.pow(2,S.ups.inc);
+const orbVal=l=>Math.pow(3,l-1);           // orbs/sec produced by a level-l orb
+const income=()=>S.grid.reduce((a,l)=>a+(l?orbVal(l):0),0)*incMult();
+
+const UPS={
+  speed:{max:8,  cost:n=>Math.ceil(60*Math.pow(2.4,n)),  val:()=>autoInt().toFixed(1)+'s'},
+  lvl:  {max:3,  cost:n=>Math.ceil(400*Math.pow(18,n)),  val:()=>'L'+spawnLvl()},
+  inc:  {max:10, cost:n=>Math.ceil(200*Math.pow(6,n)),   val:()=>'×'+incMult()},
+};
+
+const fmt=n=>{
+  n=Math.floor(n);
+  const T=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e4,'K']];
+  for(const [v,s] of T) if(n>=v) return (Math.floor(n/(v/10))/10).toLocaleString('en-US')+s;
+  return n.toLocaleString('en-US');
+};
+
+/* ---------- layout ---------- */
+const $=id=>document.getElementById(id);
+const board=$('board'), wrap=$('boardWrap');
+let cell=0, gap=8, bx=0;
+function layout(){
+  const availW=Math.min(wrap.clientWidth-24, 440);
+  const availH=Math.max(wrap.clientHeight-8, 200);
+  cell=Math.max(Math.min((availW-gap*(COLS+1))/COLS, (availH-gap*(ROWS+1))/ROWS), 30);
+  board.style.width=(cell*COLS+gap*(COLS+1))+'px';
+  board.style.height=(cell*ROWS+gap*(ROWS+1))+'px';
+  [...board.querySelectorAll('.slot')].forEach((s,i)=>{place(s,i,0);s.style.width=cell+'px';s.style.height=cell+'px';});
+  [...board.querySelectorAll('.orb')].forEach(o=>{
+    const l=+o.dataset.l;
+    orbStyle(o,l);
+    place(o,+o.dataset.i,(cell-orbSize(l))/2);
+  });
+}
+const cx=i=>gap+(i%COLS)*(cell+gap);
+const cy=i=>gap+Math.floor(i/COLS)*(cell+gap);
+function place(el,i,inset){
+  el.style.left=(cx(i)+inset)+'px';
+  el.style.top=(cy(i)+inset)+'px';
+}
+const orbSize=l=>cell*(0.62+0.038*Math.min(l,10));
+
+for(let i=0;i<N;i++){
+  const s=document.createElement('div');
+  s.className='slot';
+  board.appendChild(s);
+}
+
+/* ---------- orb colors ---------- */
+function orbStyle(el,l){
+  const t=(l-1)/(MAXL-1);
+  let bg;
+  if(l>=MAXL) bg='radial-gradient(circle at 34% 30%, #FFF3B8 0%, #FFD24A 45%, #E8960B 100%)';
+  else if(l>=10) bg='radial-gradient(circle at 34% 30%, #FFD7EE 0%, #C6007E 55%, #7D0050 100%)';
+  else{
+    const light=38+t*40;
+    bg=`radial-gradient(circle at 34% 30%, hsl(207,85%,${light+28}%) 0%, hsl(207,72%,${light}%) 55%, hsl(215,80%,${Math.max(light-22,14)}%) 100%)`;
+  }
+  el.style.background=bg;
+  const sz=orbSize(l);
+  el.style.width=sz+'px'; el.style.height=sz+'px';
+  el.style.fontSize=(sz*0.34)+'px';
+  el.textContent=l>=MAXL?'☀':l;
+  el.style.boxShadow=(l>=10?'0 0 18px rgba(198,0,126,.7),':'0 0 '+(4+l*2)+'px rgba(59,151,222,.'+Math.min(3+l,9)+'),')+
+    'inset 0 -6px 14px rgba(0,25,101,.5), inset 0 5px 12px rgba(255,255,255,.4)';
+}
+
+/* ---------- orbs dom ---------- */
+const orbEls={}; let orbSeq=0;
+function addOrb(i,l,pop){
+  const el=document.createElement('div');
+  el.className='orb'+(pop?' pop':'');
+  el.dataset.i=i; el.dataset.l=l; el.dataset.id=++orbSeq;
+  orbStyle(el,l);
+  place(el,i,(cell-orbSize(l))/2);
+  board.appendChild(el);
+  orbEls[orbSeq]=el;
+  attachDrag(el);
+  return el;
+}
+function floatTxt(i,txt){
+  const f=document.createElement('div');
+  f.className='floatUp'; f.textContent=txt;
+  f.style.left=(cx(i)+cell*0.18)+'px'; f.style.top=(cy(i)+cell*0.1)+'px';
+  board.appendChild(f); setTimeout(()=>f.remove(),1000);
+}
+
+/* ---------- audio ---------- */
+let AC=null;
+function beep(f,dur=0.06,g=0.09,type='sine'){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),gn=AC.createGain();
+    o.type=type;o.frequency.value=f;
+    gn.gain.setValueAtTime(g,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+    o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+/* ---------- spawn ---------- */
+let cd=0; const CD=1.4;
+function emptySlots(){ const r=[]; S.grid.forEach((l,i)=>{if(!l)r.push(i);}); return r; }
+function spawn(l){
+  const empt=emptySlots();
+  if(!empt.length) return false;
+  const i=empt[Math.floor(Math.random()*empt.length)];
+  S.grid[i]=l;
+  addOrb(i,l,true);
+  return true;
+}
+$('spawnBtn').addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  if(cd>0) return;
+  if(!spawn(spawnLvl())){ beep(150,.08,.06,'square'); return; }
+  cd=CD; beep(520,.05,.08);
+  if(navigator.vibrate) navigator.vibrate(8);
+  paint(); save();
+});
+
+/* ---------- drag & merge ---------- */
+function attachDrag(el){
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    const br=board.getBoundingClientRect();
+    const move=ev=>{
+      el.style.left=(ev.clientX-br.left-el.offsetWidth/2)+'px';
+      el.style.top=(ev.clientY-br.top-el.offsetHeight/2)+'px';
+    };
+    const up=ev=>{
+      el.classList.remove('drag');
+      el.removeEventListener('pointermove',move);
+      el.removeEventListener('pointerup',up);
+      el.removeEventListener('pointercancel',up);
+      const col=Math.floor((ev.clientX-br.left)/(cell+gap));
+      const row=Math.floor((ev.clientY-br.top)/(cell+gap));
+      const from=+el.dataset.i, l=+el.dataset.l;
+      let to=(col>=0&&col<COLS&&row>=0&&row<ROWS)?row*COLS+col:-1;
+      if(to===-1||to===from){ place(el,from,(cell-orbSize(l))/2); return; }
+      if(S.grid[to]===0){                       // move
+        S.grid[from]=0; S.grid[to]=l; el.dataset.i=to;
+        place(el,to,(cell-orbSize(l))/2);
+        save();
+      }else if(S.grid[to]===l && l<MAXL){       // merge!
+        const target=[...board.querySelectorAll('.orb')].find(o=>+o.dataset.i===to && o!==el);
+        S.grid[from]=0; S.grid[to]=l+1;
+        el.remove(); if(target) target.remove();
+        addOrb(to,l+1,true);
+        floatTxt(to,'L'+(l+1)+'!');
+        beep(600+l*60,.07,.1); setTimeout(()=>beep(800+l*60,.09,.1),70);
+        if(navigator.vibrate) navigator.vibrate([10,30,14]);
+        if(l+1>S.best){ S.best=l+1; if(S.best>=MAXL) discForged(); }
+        paint(); save();
+      }else{                                     // snap back
+        place(el,from,(cell-orbSize(l))/2);
+        beep(180,.05,.05,'square');
+      }
+    };
+    el.addEventListener('pointermove',move);
+    el.addEventListener('pointerup',up);
+    el.addEventListener('pointercancel',up);
+  });
+}
+
+function discForged(){
+  const b=$('banner');
+  b.innerHTML='<span class="mag">SUN DISC FORGED!</span><br><span style="font-size:14px">The wait was worth it. Keep merging — it pays ×'+fmt(orbVal(MAXL))+'/sec.</span>';
+  b.style.display='block';
+  b.style.animation='none'; void b.offsetWidth; b.style.animation='';
+  setTimeout(()=>{b.style.display='none';},2900);
+  beep(660,.12,.12); setTimeout(()=>beep(880,.12,.12),120); setTimeout(()=>beep(1320,.2,.12),260);
+}
+
+/* ---------- upgrades ---------- */
+function buyUp(k){
+  const u=UPS[k];
+  if(S.ups[k]>=u.max) return;
+  const c=u.cost(S.ups[k]);
+  if(S.orbs<c){ beep(150,.08,.06,'square'); return; }
+  S.orbs-=c; S.ups[k]++;
+  beep(740,.07,.1); setTimeout(()=>beep(1050,.09,.1),70);
+  paint(); save();
+}
+['speed','lvl','inc'].forEach(k=>$('up-'+k).addEventListener('pointerdown',e=>{e.preventDefault();buyUp(k);}));
+
+/* ---------- paint ---------- */
+function paint(){
+  $('score').textContent=fmt(S.orbs);
+  $('cpsVal').textContent=fmt(income());
+  $('bestLvl').textContent=S.best>=MAXL?'☀':('L'+S.best);
+  ['speed','lvl','inc'].forEach(k=>{
+    const u=UPS[k], el=$('up-'+k), maxed=S.ups[k]>=u.max;
+    $('v-'+k).textContent=u.val();
+    $('c-'+k).textContent=maxed?'MAX':fmt(u.cost(S.ups[k]));
+    el.classList.toggle('max',maxed);
+    el.classList.toggle('can',!maxed&&S.orbs>=u.cost(S.ups[k]));
+  });
+}
+
+/* ---------- slogans ---------- */
+let sloI=0;
+setInterval(()=>{
+  const el=$('slogan');
+  el.style.opacity=0;
+  setTimeout(()=>{ sloI=(sloI+1)%SLOGANS.length; el.textContent=SLOGANS[sloI]; el.style.opacity=1; },400);
+},8000);
+
+/* ---------- income (wall-clock) ---------- */
+let lastEarn=Date.now();
+function accrue(){
+  const now=Date.now();
+  let dt=(now-lastEarn)/1000; lastEarn=now;
+  if(dt<=0) return;
+  dt=Math.min(dt,2*3600);
+  S.orbs+=income()*dt;
+}
+setInterval(()=>{accrue();paint();},1000);
+if(S.seen){
+  const away=Math.min((Date.now()-S.seen)/1000,2*3600);
+  const gain=income()*away;
+  if(gain>1){ S.orbs+=gain;
+    setTimeout(()=>{
+      const b=$('banner');
+      b.innerHTML='Welcome back!<br><span style="font-size:14px">Your orbs made '+fmt(gain)+' while you were away.</span>';
+      b.style.display='block';
+      setTimeout(()=>{b.style.display='none';},2900);
+    },500);
+  }
+}
+
+/* ---------- loop ---------- */
+let last=performance.now(), autoT=autoInt(), uiAcc=0, saveAcc=0;
+function frame(now){
+  const dt=Math.min((now-last)/1000,.25); last=now;
+  accrue();
+  if(cd>0){ cd=Math.max(0,cd-dt);
+    $('spawnCd').style.width=(cd/CD*100)+'%';
+    $('spawnBtn').classList.toggle('wait',cd>0);
+    $('spawnTxt').textContent=cd>0?'…':'SPAWN ORB';
+  }
+  autoT-=dt;
+  if(autoT<=0){ autoT=autoInt(); if(spawn(spawnLvl())) paint(); }
+  uiAcc+=dt; if(uiAcc>0.3){ paint(); uiAcc=0; }
+  saveAcc+=dt; if(saveAcc>5){ save(); saveAcc=0; }
+  requestAnimationFrame(frame);
+}
+function save(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({orbs:S.orbs,grid:S.grid,ups:S.ups,best:S.best,seen:Date.now()})); }catch(e){}
+}
+addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+addEventListener('resize',layout);
+addEventListener('load',layout);
+
+/* ---------- boot ---------- */
+layout();
+S.grid.forEach((l,i)=>{ if(l) addOrb(i,l,false); });
+if(emptySlots().length===N){ S.grid[5]=1; addOrb(5,1,true); S.grid[6]=1; addOrb(6,1,true); }
+requestAnimationFrame(()=>layout());
+paint();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

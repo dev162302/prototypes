@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORB KINGDOM — The Waiting Game</title>
+<style>
+  :root{
+    --blue:#001965; --blue2:#00113F; --lblue:#3B97DE; --tint1:#E2F0FA; --tint2:#B1D5F2;
+    --magenta:#C6007E; --white:#fff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:var(--blue);color:var(--white);overflow:hidden;
+    user-select:none;-webkit-user-select:none;
+  }
+
+  #game{display:grid;grid-template-columns:30% 1fr 330px;height:100%;}
+
+  /* ================= LEFT : castle + mine ================= */
+  #left{
+    position:relative;overflow:hidden;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.02) 0 3px, transparent 3px 46px),
+      linear-gradient(180deg,#002B7A 0%, #001965 40%, #000E38 100%);
+    box-shadow:inset -10px 0 30px rgba(0,0,0,.45);
+    display:flex;flex-direction:column;align-items:center;
+  }
+  #kName{
+    margin-top:20px;padding:7px 26px;font-size:16px;font-weight:700;letter-spacing:.4px;
+    background:rgba(255,255,255,.08);border-radius:50px;cursor:pointer;
+    border:1px solid rgba(177,213,242,.35);
+    white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis;
+  }
+  #kName:hover{background:rgba(255,255,255,.16);}
+  #count{
+    font-size:36px;font-weight:800;margin-top:10px;line-height:1.05;text-align:center;
+    letter-spacing:-.5px;text-shadow:0 0 26px rgba(59,151,222,.6);
+    font-variant-numeric:tabular-nums;
+  }
+  #cpsLine{font-size:12px;font-weight:600;letter-spacing:1.5px;color:var(--tint2);margin-top:4px;}
+  #cpsLine.frenzy{color:#FF9AD1;}
+  #powLine{font-size:12px;font-weight:700;letter-spacing:1.5px;color:#fff;margin-top:2px;}
+  #powLine b{color:var(--tint2);font-weight:600;}
+
+  #scene{flex:1;width:100%;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;gap:2px;}
+  #rays,#rays2{
+    position:absolute;width:150%;aspect-ratio:1;left:50%;top:58%;translate:-50% -50%;
+    border-radius:50%;pointer-events:none;
+    background:repeating-conic-gradient(rgba(177,213,242,.09) 0 6deg, transparent 6deg 20deg);
+    -webkit-mask:radial-gradient(closest-side, #fff 18%, transparent 70%);
+            mask:radial-gradient(closest-side, #fff 18%, transparent 70%);
+    animation:spin 80s linear infinite;
+  }
+  #rays2{animation:spin 55s linear infinite reverse;opacity:.6;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  #castle{
+    font-size:min(9vw,110px);line-height:1;z-index:2;pointer-events:none;
+    filter:drop-shadow(0 6px 18px rgba(0,0,0,.6));
+    transition:font-size .4s;
+  }
+  #castleLvl{
+    z-index:2;font-size:10.5px;font-weight:800;letter-spacing:2px;color:var(--blue);
+    background:#fff;border-radius:50px;padding:3px 14px;margin-top:2px;
+    box-shadow:0 2px 8px rgba(0,25,101,.4);
+  }
+  #gem{
+    position:relative;z-index:2;width:min(11vw,132px);aspect-ratio:1;cursor:pointer;margin-top:14px;
+    background:linear-gradient(135deg,#C9E6FA 0%,#9FD0F5 25%,var(--lblue) 55%,#1565B8 85%,#0C3F86 100%);
+    clip-path:polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+    transition:transform .07s ease;
+    animation:gemGlow 3.2s ease-in-out infinite;
+  }
+  #gem.squish{transform:scale(.92);}
+  @keyframes gemGlow{0%,100%{filter:brightness(1) drop-shadow(0 0 30px rgba(59,151,222,.7));}50%{filter:brightness(1.18) drop-shadow(0 0 55px rgba(59,151,222,.95));}}
+  #gemLbl{z-index:2;font-size:9.5px;letter-spacing:2.5px;font-weight:700;color:var(--tint2);margin-top:8px;}
+  #fxL{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+  .floatUp{
+    position:absolute;font-weight:800;font-size:21px;color:#fff;pointer-events:none;z-index:6;
+    text-shadow:0 2px 10px rgba(0,25,101,.9);
+    animation:riseUp 1.1s ease-out forwards;
+  }
+  .floatUp.mag{color:#FF9AD1;}
+  @keyframes riseUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-90px);}}
+  #leftLogo{position:absolute;left:50%;translate:-50% 0;bottom:12px;width:86px;opacity:.85;pointer-events:none;}
+
+  /* ================= MIDDLE ================= */
+  #mid{
+    position:relative;display:flex;flex-direction:column;overflow:hidden;
+    background:
+      repeating-linear-gradient(90deg, rgba(59,151,222,.10) 0 36px, transparent 36px 52px),
+      linear-gradient(180deg,#EAF4FC 0%, var(--tint1) 100%);
+    border-left:2px solid var(--blue2);border-right:2px solid var(--blue2);
+  }
+  #ticker{
+    padding:12px 20px;text-align:center;font-size:15px;font-style:italic;font-weight:700;
+    min-height:48px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,#4AA3E6,var(--lblue));
+    box-shadow:0 3px 10px rgba(0,25,101,.25);color:#fff;
+  }
+  #tickerText{transition:opacity .4s;}
+  #waveBar{
+    padding:6px 16px;text-align:center;font-size:11.5px;font-weight:800;letter-spacing:1.5px;
+    color:var(--blue);background:rgba(177,213,242,.55);
+  }
+  #waveBar.soon{color:var(--magenta);}
+  #armyView{flex:1;overflow-y:auto;scrollbar-width:thin;position:relative;}
+  .bRow{position:relative;padding:10px 12px 12px;min-height:74px;}
+  .bRow:nth-child(odd){background:rgba(59,151,222,.12);}
+  .bRow .icons{font-size:31px;line-height:1.3;letter-spacing:2px;word-break:break-all;filter:drop-shadow(0 2px 2px rgba(0,25,101,.25));}
+  .bRow .icons span{display:inline-block;animation:bob 2.8s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-3px);}}
+  .bRow .bTag{
+    position:absolute;top:8px;right:12px;font-size:11.5px;font-weight:700;color:var(--blue);
+    background:#fff;padding:3px 12px;border-radius:50px;box-shadow:0 1px 4px rgba(0,25,101,.18);
+  }
+  .blob{
+    position:absolute;width:52px;height:52px;border-radius:50%;cursor:pointer;z-index:20;
+    background:radial-gradient(circle at 35% 30%, #B9BFC9 0%, #8A93A1 55%, #5A6472 100%);
+    box-shadow:0 4px 14px rgba(0,0,0,.35), inset 0 -5px 10px rgba(0,0,0,.3);
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+    animation:marchIn 2.4s ease-out forwards;
+  }
+  @keyframes marchIn{from{right:-70px;opacity:0;}to{right:var(--tx);opacity:1;}}
+  .blob.popped{animation:blobPop .22s ease-out forwards;}
+  @keyframes blobPop{to{transform:scale(1.6);opacity:0;}}
+  #credit{
+    padding:7px;text-align:center;font-size:10px;letter-spacing:1.6px;font-weight:600;
+    color:var(--blue);background:rgba(177,213,242,.5);
+  }
+
+  /* ================= RIGHT : store ================= */
+  #store{
+    display:flex;flex-direction:column;background:var(--tint1);overflow:hidden;
+    border-left:2px solid var(--blue2);color:var(--blue);
+  }
+  #storeTitle{
+    text-align:center;font-size:15px;font-weight:800;letter-spacing:4px;
+    padding:14px 0 10px;color:var(--blue);
+  }
+  #slogan{
+    margin:0 10px 10px;background:#fff;border-radius:14px;padding:12px 14px 13px;
+    box-shadow:0 3px 12px rgba(0,25,101,.12);position:relative;overflow:hidden;
+  }
+  #slogan::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--magenta);}
+  #sloganEyebrow{font-size:9px;letter-spacing:2.5px;font-weight:700;color:var(--lblue);}
+  #sloganText{font-size:14.5px;font-weight:800;line-height:1.25;margin-top:3px;color:var(--blue);transition:opacity .4s;}
+  #upgradeShelf{
+    min-height:64px;padding:6px 10px;background:rgba(177,213,242,.45);
+    display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start;
+  }
+  .upg{
+    width:52px;height:52px;border-radius:12px;cursor:pointer;font-size:27px;
+    display:flex;align-items:center;justify-content:center;
+    background:#fff;border:2px solid var(--tint2);
+    box-shadow:0 2px 6px rgba(0,25,101,.12);
+  }
+  .upg.can{border-color:var(--lblue);box-shadow:0 2px 10px rgba(59,151,222,.45);}
+  .upg.cant{filter:grayscale(.8) opacity(.55);}
+  #qtyRow{
+    display:flex;align-items:center;gap:5px;padding:8px 10px;
+    font-size:12.5px;font-weight:700;background:rgba(177,213,242,.25);
+  }
+  .qBtn{padding:4px 14px;border-radius:50px;cursor:pointer;background:#fff;border:1.5px solid var(--tint2);color:var(--blue);opacity:.65;}
+  .qBtn.sel{opacity:1;border-color:var(--blue);}
+  #products{flex:1;overflow-y:auto;scrollbar-width:thin;padding:8px 10px;display:flex;flex-direction:column;gap:7px;}
+  .secLbl{font-size:9.5px;letter-spacing:2.5px;font-weight:800;color:var(--lblue);padding:4px 4px 0;}
+  .prod{
+    display:flex;align-items:center;gap:11px;padding:9px 12px;cursor:pointer;min-height:62px;
+    background:#fff;border-radius:14px;border:1.5px solid rgba(177,213,242,.7);
+    box-shadow:0 2px 8px rgba(0,25,101,.10);
+    transition:transform .08s, box-shadow .15s;
+  }
+  .prod:hover{box-shadow:0 4px 14px rgba(0,25,101,.18);}
+  .prod:active{transform:scale(.97);}
+  .prod .pIcon{font-size:34px;filter:drop-shadow(0 2px 2px rgba(0,25,101,.2));}
+  .prod .pName{font-size:15px;font-weight:800;color:var(--blue);line-height:1.05;}
+  .prod .pSub{font-size:10.5px;font-weight:600;color:#7B8DB3;margin-top:1px;}
+  .prod .pPrice{font-size:12.5px;font-weight:700;margin-top:2px;}
+  .prod .pPrice.ok{color:var(--lblue);}
+  .prod .pPrice.no{color:#9AA7C4;}
+  .prod .pOwn{margin-left:auto;font-size:28px;font-weight:800;color:rgba(0,25,101,.18);font-variant-numeric:tabular-nums;}
+  .prod.locked{background:rgba(255,255,255,.45);cursor:default;border-style:dashed;}
+  .prod.locked .pIcon{filter:brightness(0) opacity(.7);}
+  .prod.locked .pName{color:#8FA3C8;}
+  .prod.hidden{display:none;}
+  .prod.maxed{opacity:.55;cursor:default;}
+  #storeFoot{
+    display:flex;align-items:center;justify-content:flex-end;gap:10px;
+    background:var(--blue);padding:8px 14px;
+  }
+  #storeFoot img{height:30px;}
+
+  #tooltip{
+    position:fixed;z-index:60;max-width:280px;padding:11px 13px;display:none;
+    background:#fff;border:2px solid var(--lblue);border-radius:12px;
+    font-size:12.5px;line-height:1.45;color:var(--blue);pointer-events:none;
+    box-shadow:0 8px 24px rgba(0,25,101,.3);
+  }
+  #tooltip b{font-size:14px;}
+  #tooltip .tPrice{font-weight:800;margin-top:4px;color:var(--lblue);}
+  #tooltip .tQuote{font-style:italic;opacity:.65;margin-top:5px;font-size:11.5px;}
+
+  /* royal gift + banner */
+  #gift{
+    position:fixed;width:66px;height:66px;border-radius:50%;cursor:pointer;display:none;z-index:50;
+    background:radial-gradient(circle at 35% 30%, #FFD7EE 0%, var(--magenta) 55%, #7D0050 100%);
+    box-shadow:0 0 26px rgba(198,0,126,.85), 0 0 70px rgba(198,0,126,.4);
+    animation:gold 1.5s ease-in-out infinite;
+  }
+  @keyframes gold{0%,100%{transform:scale(1) rotate(-6deg);}50%{transform:scale(1.12) rotate(6deg);}}
+  #banner{
+    position:fixed;left:50%;top:16%;translate:-50% 0;z-index:55;display:none;
+    font-size:26px;font-weight:800;text-align:center;pointer-events:none;color:#fff;
+    text-shadow:0 2px 14px rgba(0,25,101,.9);width:92%;
+    animation:bannerUp 3.2s ease-out forwards;
+  }
+  @keyframes bannerUp{
+    0%{opacity:0;transform:translateY(10px);}
+    8%,75%{opacity:1;transform:translateY(0);}
+    100%{opacity:0;transform:translateY(-26px);}
+  }
+  #banner .mag{color:#FF9AD1;}
+  #banner .sub{font-size:15px;font-weight:600;}
+
+  /* ================= responsive ================= */
+  @media (max-width:900px){
+    body{overflow:auto;}
+    #game{display:flex;flex-direction:column;height:auto;min-height:100%;}
+    #left{min-height:58vh;box-shadow:none;padding-bottom:10px;}
+    #leftLogo{display:none;}
+    #castle{font-size:min(24vw,110px);}
+    #gem{width:min(30vw,132px);}
+    #store{border-left:none;}
+    #products{overflow:visible;}
+    #armyView{max-height:40vh;}
+  }
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="left">
+    <div id="kName"></div>
+    <div id="count">0 orbs</div>
+    <div id="cpsLine">PER SECOND: 1</div>
+    <div id="powLine">⚔️ ARMY POWER: <span id="powVal">0</span></div>
+    <div id="scene">
+      <div id="rays"></div><div id="rays2"></div>
+      <div id="castle">⛺</div>
+      <div id="castleLvl">CAMP</div>
+      <div id="gem"></div>
+      <div id="gemLbl">TAP THE ORB MINE</div>
+      <canvas id="fxL"></canvas>
+    </div>
+    <img id="leftLogo" src="assets/novo-logo-white.png" alt="Novo Nordisk">
+  </div>
+
+  <div id="mid">
+    <div id="ticker"><span id="tickerText"></span></div>
+    <div id="waveBar">⚔️ FIRST BOREDOM WAVE APPROACHES...</div>
+    <div id="armyView"></div>
+    <div id="credit">NOVO NORDISK &middot; GAMESCOM 2026 &middot; THE WAITING GAME</div>
+  </div>
+
+  <div id="store">
+    <div id="storeTitle">STORE</div>
+    <div id="slogan">
+      <div id="sloganEyebrow">WHILE YOU WAIT</div>
+      <div id="sloganText">Some things are worth the wait. Your health isn&rsquo;t.</div>
+    </div>
+    <div id="upgradeShelf"></div>
+    <div id="qtyRow">
+      <span style="font-weight:800;letter-spacing:1px;">BUY</span>
+      <span class="qBtn qAmt sel" data-n="1">1</span>
+      <span class="qBtn qAmt" data-n="10">10</span>
+      <span class="qBtn qAmt" data-n="100">100</span>
+    </div>
+    <div id="products"></div>
+    <div id="storeFoot"><img src="assets/novo-logo-white.png" alt="Novo Nordisk"></div>
+  </div>
+
+</div>
+
+<div id="gift"></div>
+<div id="banner"></div>
+<div id="tooltip"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ==================== data ==================== */
+const UNITS = [
+  {id:'squire',  name:'Squire',         icon:'\u{1F6E1}️', base:15,   cps:0.1,  pow:1,     quote:'Holds a tiny shield. Believes in you.'},
+  {id:'archer',  name:'Orb Archer',     icon:'\u{1F3F9}', base:100,    cps:1,    pow:5,     quote:'Fires warning shots at boredom.'},
+  {id:'wizard',  name:'Waiting Wizard', icon:'\u{1F9D9}', base:1100,   cps:8,    pow:25,    quote:'Turns dull moments into orbs.'},
+  {id:'knight',  name:'Knight',         icon:'\u{1F40E}', base:12000,  cps:47,   pow:120,   quote:'Patrols the queue perimeter.'},
+  {id:'cata',    name:'Catapult',       icon:'\u{1FA83}', base:130000, cps:260,  pow:600,   quote:'Launches bubbles, not boulders.'},
+  {id:'griffin', name:'Griffin',        icon:'\u{1F985}', base:1.4e6,  cps:1400, pow:3000,  quote:'Air support. Majestic.'},
+  {id:'dragon',  name:'Bubble Dragon',  icon:'\u{1F409}', base:2e7,    cps:7800, pow:15000, quote:'Breathes bubbles. Boredom hates bubbles.'},
+  {id:'champ',   name:'Champion',       icon:'\u{1F9B8}', base:3.3e8,  cps:44000,pow:75000, quote:'One per kingdom is plenty. Buy fifty.'},
+];
+const WALL = {id:'wall', name:'Castle Walls', icon:'\u{1F9F1}', max:5, cost:n=>Math.ceil(500*Math.pow(6,n)), quote:'Each level: wave loot +50%.'};
+const CASTLE = {id:'castle', max:4,
+  cost:n=>Math.ceil(2500*Math.pow(100,n)),
+  tiers:[
+    {name:'CAMP',    icon:'⛺'},
+    {name:'FORT',    icon:'\u{1F6D6}'},
+    {name:'KEEP',    icon:'\u{1F3EF}'},
+    {name:'CASTLE',  icon:'\u{1F3F0}'},
+    {name:'CITADEL', icon:'\u{1F3F0}✨'},
+  ],
+  quote:'Everything earns ×2 per level. Visibly bigger.'};
+
+const UPGRADES = [
+  {id:'u_c1', name:'Sharpened pickaxe', icon:'⛏️', cost:100,   req:s=>s.total>=50, fx:{click:2}, quote:'Chips twice the orb.'},
+  {id:'u_c2', name:'Crystal gloves', icon:'\u{1F9E4}', cost:10000, req:s=>s.total>=5000, fx:{click:2}, quote:'Grip it and rip it.'},
+  {id:'u_sq', name:'Squire training', icon:'\u{1F4AA}', cost:1000,  req:s=>s.owned.squire>=5,  fx:{b:'squire'}, quote:'Now holds two tiny shields.'},
+  {id:'u_ar', name:'Longbows', icon:'\u{1F3AF}', cost:5000, req:s=>s.owned.archer>=5, fx:{b:'archer'}, quote:'Twice the range, twice the orbs.'},
+  {id:'u_wi', name:'Thicker spellbooks', icon:'\u{1F4D8}', cost:55000, req:s=>s.owned.wizard>=5, fx:{b:'wizard'}, quote:'Chapter two: more orbs.'},
+  {id:'u_kn', name:'Horse treats', icon:'\u{1F955}', cost:600000, req:s=>s.owned.knight>=5, fx:{b:'knight'}, quote:'Morale through carrots.'},
+  {id:'u_ca', name:'Greased wheels', icon:'\u{1F6E2}️', cost:6.5e6, req:s=>s.owned.cata>=5, fx:{b:'cata'}, quote:'Squeak-free since today.'},
+  {id:'u_gr', name:'Shiny feathers', icon:'\u{1FAB6}', cost:7e7, req:s=>s.owned.griffin>=5, fx:{b:'griffin'}, quote:'Aerodynamic AND fabulous.'},
+  {id:'u_dr', name:'Extra bubbly breath', icon:'\u{1FAE7}', cost:1e9, req:s=>s.owned.dragon>=5, fx:{b:'dragon'}, quote:'Minty, somehow.'},
+];
+
+const NEWS = [
+  'A tiny camp appears in the queue. It has big plans.',
+  'News: local kingdom recruits first squire; boredom worried.',
+  'Tip: stretch your legs. Even monarchs fidget.',
+  'News: orb mine "basically infinite", geologists confirm.',
+  "Some things are worth the wait. Your health isn't.",
+  'Your army hums marching songs. Quietly. It is a queue.',
+  'News: boredom blobs spotted regrouping. Your walls shrug.',
+  'Tip: water break between waves. Royal decree.',
+  'News: castle value up 200% after someone added a flag.',
+  'The dragon does not burn things. It bubbles them. Relax.',
+];
+const NEWS_ARMY = [
+  'Your squires request larger shields. Denied. They are perfect.',
+  'News: griffins unionize; demand shinier feathers.',
+  'Your wizard turned a Monday into orbs. Nobody asked how.',
+];
+
+const SLOGANS = [
+  "Some things are worth the wait. Your health isn't.",
+  'Every moment counts. Even this one.',
+  "Don't put your health in a queue.",
+  'Build something while you wait.',
+  'Drink water. Stretch. Defend.',
+  'Small steps today. Big castles tomorrow.',
+  'Boredom loses. It always does.',
+];
+
+/* ==================== state ==================== */
+const SAVE_KEY = 'novo-kingdom-v1';
+let S = {orbs:0, total:0, clicks:0, owned:{}, wall:0, castle:0, upg:[], name:'', seen:0};
+try{
+  const raw = localStorage.getItem(SAVE_KEY);
+  if(raw){ const p = JSON.parse(raw); if(p && typeof p.orbs==='number') S = Object.assign(S, p); }
+}catch(e){}
+UNITS.forEach(u => { if(!(u.id in S.owned)) S.owned[u.id] = 0; });
+if(!Array.isArray(S.upg)) S.upg = [];
+
+let buyAmt = 1;
+let frenzy = 1, frenzyEnd = 0;
+
+const has = id => S.upg.includes(id);
+const bMult = id => Math.pow(2, UPGRADES.filter(u => has(u.id) && u.fx.b === id).length);
+const castleMult = () => Math.pow(2, S.castle);
+const clickPow = () => Math.pow(2, UPGRADES.filter(u => has(u.id) && u.fx.click).length) * castleMult() * frenzy;
+const cps = () => (1 + UNITS.reduce((a,u) => a + u.cps * S.owned[u.id] * bMult(u.id), 0)) * castleMult();
+const armyPow = () => Math.round(UNITS.reduce((a,u) => a + u.pow * S.owned[u.id] * bMult(u.id), 0));
+const wallMult = () => 1 + 0.5*S.wall;
+const waveLoot = () => Math.max(10, Math.round(armyPow() * 5 * wallMult() * castleMult()));
+const cost = (u, k) => Math.ceil(u.base * Math.pow(1.15, S.owned[u.id] + k));
+const bulkCost = u => { let t = 0; for(let i=0;i<buyAmt;i++) t += cost(u, i); return t; };
+
+/* ==================== formatting ==================== */
+const NAMES = [[1e21,'sextillion'],[1e18,'quintillion'],[1e15,'quadrillion'],[1e12,'trillion'],[1e9,'billion'],[1e6,'million']];
+function fmt(n){
+  n = Math.floor(n);
+  for(const [v,w] of NAMES) if(n >= v) return (Math.floor(n/v*1000)/1000).toFixed(3)+' '+w;
+  return n.toLocaleString('en-US');
+}
+function fmtShort(n){
+  n = Math.floor(n);
+  for(const [v,w] of NAMES) if(n >= v) return (Math.floor(n/v*100)/100)+' '+w;
+  return n.toLocaleString('en-US');
+}
+const DOT = '<span style="color:var(--lblue)">●</span>';
+
+/* ==================== dom ==================== */
+const $ = id => document.getElementById(id);
+const countEl=$('count'), cpsEl=$('cpsLine'), nameEl=$('kName'), powEl=$('powVal');
+const gem=$('gem'), scene=$('scene');
+const shelf=$('upgradeShelf'), products=$('products'), view=$('armyView');
+const tickerText=$('tickerText'), tooltip=$('tooltip'), gift=$('gift'), banner=$('banner');
+const sloganText=$('sloganText'), waveBar=$('waveBar');
+
+const kLabel = () => S.name ? S.name + "'s kingdom" : 'My kingdom';
+nameEl.textContent = kLabel();
+nameEl.addEventListener('click', () => {
+  const n = prompt('Name your kingdom:', S.name);
+  if(n !== null){ S.name = n.trim().slice(0,24); nameEl.textContent = kLabel(); save(); }
+});
+
+/* ==================== audio ==================== */
+let AC=null;
+function beep(f,dur=0.05,g=0.08,type='sine'){
+  try{
+    if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(), gn=AC.createGain();
+    o.type=type;o.frequency.value=f;
+    gn.gain.setValueAtTime(g,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+    o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+/* ==================== particles (left) ==================== */
+const fx=$('fxL'), fc=fx.getContext('2d');
+let parts=[];
+function sizeFx(){ fx.width=scene.clientWidth*devicePixelRatio; fx.height=scene.clientHeight*devicePixelRatio; fc.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);}
+addEventListener('resize',sizeFx); sizeFx();
+
+/* ==================== gem tap ==================== */
+gem.addEventListener('pointerdown', e => {
+  const gain = clickPow();
+  S.orbs += gain; S.total += gain; S.clicks++;
+  const r = scene.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const f = document.createElement('div');
+  f.className='floatUp'+(frenzy>1?' mag':''); f.textContent='+'+fmtShort(gain);
+  f.style.left=(x-10)+'px'; f.style.top=(y-24)+'px';
+  scene.appendChild(f); setTimeout(()=>f.remove(),1100);
+  for(let i=0;i<7;i++){
+    const a=Math.random()*Math.PI*2, sp=50+Math.random()*130;
+    parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-60,r:2+Math.random()*3.5,life:1,
+      col:frenzy>1?'198,0,126':(Math.random()<0.5?'177,213,242':'59,151,222')});
+  }
+  gem.classList.add('squish'); setTimeout(()=>gem.classList.remove('squish'),70);
+  beep(500+Math.random()*100,.04,.06);
+  if(navigator.vibrate) navigator.vibrate(6);
+  paintCounts();
+});
+
+/* ==================== store build ==================== */
+const prodEls={};
+function makeProd(parentLabel){
+  const lbl=document.createElement('div');
+  lbl.className='secLbl'; lbl.textContent=parentLabel;
+  products.appendChild(lbl);
+}
+makeProd('RECRUIT YOUR ARMY');
+UNITS.forEach(u=>{
+  const el=document.createElement('div');
+  el.className='prod locked';
+  el.innerHTML=`<span class="pIcon">${u.icon}</span>
+    <span><span class="pName">???</span><br><span class="pSub"></span><span class="pPrice no">${DOT} ${fmt(u.base)}</span></span>
+    <span class="pOwn"></span>`;
+  el.addEventListener('click',()=>buyUnit(u));
+  el.addEventListener('mouseenter',()=>showTip(unitTip(u), el));
+  el.addEventListener('mouseleave',hideTip);
+  products.appendChild(el);
+  prodEls[u.id]=el;
+});
+makeProd('BUILD YOUR CASTLE');
+const wallEl=document.createElement('div');
+wallEl.className='prod';
+wallEl.innerHTML=`<span class="pIcon">${WALL.icon}</span>
+  <span><span class="pName">${WALL.name}</span><br><span class="pSub">Wave loot +50% per level</span><span class="pPrice no"></span></span>
+  <span class="pOwn"></span>`;
+wallEl.addEventListener('click',()=>{
+  if(S.wall>=WALL.max) return;
+  const c=WALL.cost(S.wall);
+  if(S.orbs<c){ beep(150,.08,.06,'square'); return; }
+  S.orbs-=c; S.wall++;
+  beep(660,.06,.09); setTimeout(()=>beep(880,.08,.09),60);
+  renderAll(); save();
+});
+wallEl.addEventListener('mouseenter',()=>showTip(`<b>${WALL.name}</b><div class="tPrice">${S.wall>=WALL.max?'MAX LEVEL':DOT+' '+fmt(WALL.cost(S.wall))}</div><div>${WALL.quote}</div>`,wallEl));
+wallEl.addEventListener('mouseleave',hideTip);
+products.appendChild(wallEl);
+
+const castleEl=document.createElement('div');
+castleEl.className='prod';
+castleEl.innerHTML=`<span class="pIcon">\u{1F3F0}</span>
+  <span><span class="pName">Upgrade Castle</span><br><span class="pSub"></span><span class="pPrice no"></span></span>
+  <span class="pOwn"></span>`;
+castleEl.addEventListener('click',()=>{
+  if(S.castle>=CASTLE.max) return;
+  const c=CASTLE.cost(S.castle);
+  if(S.orbs<c){ beep(150,.08,.06,'square'); return; }
+  S.orbs-=c; S.castle++;
+  beep(660,.1,.12); setTimeout(()=>beep(880,.12,.12),120); setTimeout(()=>beep(1320,.2,.12),260);
+  showBanner('YOUR '+CASTLE.tiers[S.castle].name+' STANDS!<br><span class="sub">Everything now earns ×'+castleMult()+'. The queue is impressed.</span>');
+  if(navigator.vibrate) navigator.vibrate([15,40,15,40,25]);
+  renderAll(); save();
+});
+castleEl.addEventListener('mouseenter',()=>showTip(`<b>Upgrade Castle</b><div class="tPrice">${S.castle>=CASTLE.max?'MAX LEVEL':DOT+' '+fmt(CASTLE.cost(S.castle))}</div><div>${CASTLE.quote}</div>`,castleEl));
+castleEl.addEventListener('mouseleave',hideTip);
+products.appendChild(castleEl);
+
+function unitTip(u){
+  const known = S.total >= u.base*0.5 || S.owned[u.id]>0 || u.id==='squire';
+  const each = u.cps*bMult(u.id);
+  return `<b>${known?u.name:'???'}</b><div class="tPrice">${DOT} ${fmt(bulkCost(u))}</div>
+    <div>gathers <b>${fmtShort(each*castleMult())}</b> orbs/sec &middot; power <b>${fmt(u.pow*bMult(u.id))}</b></div>
+    ${S.owned[u.id]?`<div>${S.owned[u.id]} of them: <b>${fmtShort(each*S.owned[u.id]*castleMult())}</b>/sec, power <b>${fmt(u.pow*bMult(u.id)*S.owned[u.id])}</b></div>`:''}
+    <div class="tQuote">${known?u.quote:''}</div>`;
+}
+
+function buyUnit(u){
+  const c=bulkCost(u);
+  if(S.orbs < c){ beep(150,.08,.06,'square'); return; }
+  S.orbs -= c; S.owned[u.id] += buyAmt;
+  beep(660,.06,.09); setTimeout(()=>beep(880,.08,.09),60);
+  renderAll(); save();
+}
+
+document.querySelectorAll('.qAmt').forEach(el=>{
+  el.addEventListener('click',()=>{
+    buyAmt = +el.dataset.n;
+    document.querySelectorAll('.qAmt').forEach(x=>x.classList.toggle('sel',x===el));
+    renderStore();
+  });
+});
+
+/* upgrades shelf */
+function renderShelf(){
+  shelf.innerHTML='';
+  UPGRADES.filter(u=>!has(u.id) && u.req(S)).forEach(u=>{
+    const el=document.createElement('div');
+    el.className='upg '+(S.orbs>=u.cost?'can':'cant');
+    el.textContent=u.icon;
+    el.addEventListener('click',()=>{
+      if(S.orbs<u.cost){ beep(150,.08,.06,'square'); return; }
+      S.orbs-=u.cost; S.upg.push(u.id);
+      beep(740,.07,.1); setTimeout(()=>beep(1100,.1,.1),70);
+      hideTip(); renderAll(); save();
+    });
+    el.addEventListener('mouseenter',()=>{
+      const target = u.fx.click ? 'mine taps are' : (UNITS.find(b=>b.id===u.fx.b)||{name:'?'}).name+'s are';
+      showTip(`<b>${u.name}</b><div class="tPrice">${DOT} ${fmt(u.cost)}</div><div>${target} <b>twice</b> as effective.</div><div class="tQuote">"${u.quote}"</div>`, el);
+    });
+    el.addEventListener('mouseleave',hideTip);
+    shelf.appendChild(el);
+  });
+}
+
+/* tooltip */
+function showTip(html, el){
+  tooltip.innerHTML=html; tooltip.style.display='block';
+  const r=el.getBoundingClientRect(), tw=tooltip.offsetWidth;
+  let x=r.left-tw-12; if(x<4) x=r.right+12;
+  tooltip.style.left=x+'px';
+  tooltip.style.top=Math.min(innerHeight-tooltip.offsetHeight-8, Math.max(8,r.top))+'px';
+}
+function hideTip(){ tooltip.style.display='none'; }
+
+/* ==================== render ==================== */
+function paintCounts(){
+  countEl.textContent = fmtShort(S.orbs)+' orb'+(Math.floor(S.orbs)===1?'':'s');
+  const c = cps()*frenzy;
+  cpsEl.textContent = 'PER SECOND: '+(c<1000 ? (Math.round(c*10)/10).toLocaleString('en-US') : fmtShort(c))+(frenzy>1?'  ·  FRENZY ×'+frenzy:'');
+  cpsEl.classList.toggle('frenzy', frenzy>1);
+  powEl.textContent = fmt(armyPow());
+  document.title = fmtShort(S.orbs)+' orbs - Orb Kingdom';
+}
+function renderStore(){
+  UNITS.forEach((u,i)=>{
+    const el=prodEls[u.id];
+    const known = i===0 || S.total >= u.base*0.5 || S.owned[u.id]>0;
+    const visible = i<2 || S.total >= u.base*0.15 || S.owned[u.id]>0 ||
+      (i>0 && (S.owned[UNITS[i-1].id]>0 || S.total>=UNITS[i-1].base*0.5));
+    el.classList.toggle('hidden', !visible);
+    el.classList.toggle('locked', !known);
+    el.querySelector('.pName').textContent = known ? u.name : '???';
+    el.querySelector('.pSub').textContent = known ? fmtShort(u.cps*bMult(u.id)*castleMult())+'/sec · ⚔ '+fmt(u.pow*bMult(u.id)) : '';
+    const priceEl=el.querySelector('.pPrice');
+    priceEl.innerHTML=DOT+' '+fmt(bulkCost(u));
+    priceEl.className='pPrice '+(S.orbs>=bulkCost(u)?'ok':'no');
+    el.querySelector('.pOwn').textContent = S.owned[u.id]||'';
+  });
+  // walls
+  wallEl.classList.toggle('maxed', S.wall>=WALL.max);
+  wallEl.querySelector('.pPrice').innerHTML = S.wall>=WALL.max?'MAX':DOT+' '+fmt(WALL.cost(S.wall));
+  wallEl.querySelector('.pPrice').className='pPrice '+(S.wall<WALL.max&&S.orbs>=WALL.cost(S.wall)?'ok':'no');
+  wallEl.querySelector('.pOwn').textContent = S.wall||'';
+  // castle
+  castleEl.classList.toggle('maxed', S.castle>=CASTLE.max);
+  castleEl.querySelector('.pSub').textContent = S.castle>=CASTLE.max?'CITADEL — max level':'Next: '+CASTLE.tiers[S.castle+1].name+' · everything ×2';
+  castleEl.querySelector('.pPrice').innerHTML = S.castle>=CASTLE.max?'MAX':DOT+' '+fmt(CASTLE.cost(S.castle));
+  castleEl.querySelector('.pPrice').className='pPrice '+(S.castle<CASTLE.max&&S.orbs>=CASTLE.cost(S.castle)?'ok':'no');
+  castleEl.querySelector('.pOwn').textContent = S.castle?('L'+S.castle):'';
+  renderShelf();
+}
+function renderCastle(){
+  $('castle').textContent = CASTLE.tiers[S.castle].icon;
+  $('castle').style.fontSize = 'min('+(9+S.castle*1.6)+'vw,'+(110+S.castle*18)+'px)';
+  $('castleLvl').textContent = CASTLE.tiers[S.castle].name+(S.castle?' · LVL '+S.castle:'');
+}
+function renderView(){
+  view.innerHTML='';
+  UNITS.forEach(u=>{
+    if(!S.owned[u.id]) return;
+    const row=document.createElement('div');
+    row.className='bRow';
+    const n=Math.min(S.owned[u.id],80);
+    let icons='';
+    for(let i=0;i<n;i++) icons+=`<span style="animation-delay:${(i%7)*0.35}s">${u.icon}</span>`;
+    row.innerHTML=`<div class="bTag">${u.name} × ${S.owned[u.id]}</div><div class="icons">${icons}</div>`;
+    view.appendChild(row);
+  });
+  if(S.wall>0){
+    const row=document.createElement('div');
+    row.className='bRow';
+    let icons='';
+    for(let i=0;i<S.wall*6;i++) icons+=`<span style="animation-delay:${(i%7)*0.35}s">${WALL.icon}</span>`;
+    row.innerHTML=`<div class="bTag">Walls LVL ${S.wall}</div><div class="icons">${icons}</div>`;
+    view.appendChild(row);
+  }
+}
+function renderAll(){ paintCounts(); renderStore(); renderView(); renderCastle(); }
+
+/* ==================== news + slogans ==================== */
+let newsI=0;
+function rotateNews(){
+  tickerText.style.opacity=0;
+  setTimeout(()=>{
+    let pool=NEWS.slice(0, Math.max(3, Math.min(NEWS.length, 3+Math.floor(Math.log10(S.total+1)*2))));
+    if(armyPow()>10) pool=pool.concat(NEWS_ARMY);
+    newsI=(newsI+1+Math.floor(Math.random()*(pool.length-1)))%pool.length;
+    tickerText.textContent=pool[newsI];
+    tickerText.style.opacity=1;
+  },400);
+}
+tickerText.textContent=NEWS[0];
+setInterval(rotateNews,9000);
+
+let sloI=0;
+setInterval(()=>{
+  sloganText.style.opacity=0;
+  setTimeout(()=>{
+    sloI=(sloI+1)%SLOGANS.length;
+    sloganText.textContent=SLOGANS[sloI];
+    sloganText.style.opacity=1;
+  },400);
+},8000);
+
+/* ==================== boredom waves ==================== */
+const qp=new URLSearchParams(location.search);
+const WAVE_GAP=()=>150+Math.random()*60;
+let waveAt = Date.now() + (qp.has('demo')?8000:60000);
+let waveRunning=false, waveBonus=0;
+
+function doWave(){
+  if(waveRunning) return;
+  waveRunning=true; waveBonus=0;
+  const loot=waveLoot();
+  const blobs=[];
+  const vh=view.clientHeight||300;
+  for(let i=0;i<5;i++){
+    const b=document.createElement('div');
+    b.className='blob';
+    b.textContent='\u{1F4A4}';
+    b.style.setProperty('--tx',(10+Math.random()*45)+'%');
+    b.style.top=(20+Math.random()*(Math.max(vh-90,60)))+'px';
+    b.style.animationDelay=(i*0.18)+'s';
+    b.addEventListener('pointerdown',()=>{
+      if(b.dataset.done) return;
+      b.dataset.done=1;
+      const bonus=Math.max(2,Math.round(loot*0.1));
+      waveBonus+=bonus; S.orbs+=bonus; S.total+=bonus;
+      b.classList.add('popped'); setTimeout(()=>b.remove(),230);
+      beep(700+Math.random()*200,.05,.09);
+      if(navigator.vibrate) navigator.vibrate(8);
+      paintCounts();
+    });
+    view.appendChild(b);
+    blobs.push(b);
+  }
+  // army repels remaining blobs after they arrive
+  setTimeout(()=>{
+    let k=0;
+    blobs.forEach(b=>{
+      if(b.dataset.done) return;
+      setTimeout(()=>{
+        if(!b.isConnected) return;
+        b.dataset.done=1;
+        b.classList.add('popped'); setTimeout(()=>b.remove(),230);
+        beep(420+k*60,.05,.07);
+      }, k++*160);
+    });
+    setTimeout(()=>{
+      S.orbs+=loot; S.total+=loot;
+      showBanner('WAVE REPELLED! ⚔️<br><span class="sub">Your army looted <b>'+fmt(loot)+'</b> orbs'+(waveBonus>0?' (+'+fmt(waveBonus)+' from your taps)':'')+'</span>');
+      beep(660,.1,.12); setTimeout(()=>beep(990,.14,.12),110);
+      waveRunning=false;
+      waveAt=Date.now()+WAVE_GAP()*1000;
+      renderAll(); save();
+    }, k*160+350);
+  },2600);
+}
+
+/* ==================== royal gift ==================== */
+let giftT = 30+Math.random()*40;
+function spawnGift(){
+  gift.style.left=(60+Math.random()*(innerWidth-460))+'px';
+  gift.style.top=(80+Math.random()*(innerHeight-220))+'px';
+  gift.style.display='block';
+  setTimeout(()=>{gift.style.display='none';},13000);
+}
+gift.addEventListener('pointerdown',()=>{
+  gift.style.display='none';
+  beep(880,.1,.12); setTimeout(()=>beep(1320,.14,.12),90);
+  if(Math.random()<0.5){
+    const gain=Math.min(S.orbs*0.15, cps()*900)+13;
+    S.orbs+=gain; S.total+=gain;
+    showBanner('A royal gift!<br><span class="sub">+'+fmtShort(gain)+' orbs!</span>');
+  }else{
+    frenzy=7; frenzyEnd=Date.now()+77000;
+    showBanner('<span class="mag">Kingdom Frenzy!</span><br><span class="sub">Everything ×7 for 77 seconds!</span>');
+  }
+  renderAll(); save();
+});
+let bannerTimer=0;
+function showBanner(html){
+  banner.innerHTML=html; banner.style.display='block';
+  banner.style.animation='none'; void banner.offsetWidth; banner.style.animation='';
+  clearTimeout(bannerTimer);
+  bannerTimer=setTimeout(()=>{banner.style.display='none';},3100);
+}
+
+/* ==================== income (wall-clock) ==================== */
+let lastEarn=Date.now();
+function accrue(){
+  const now=Date.now();
+  if(frenzy>1 && now>frenzyEnd){ frenzy=1; }
+  let dt=(now-lastEarn)/1000; lastEarn=now;
+  if(dt<=0) return;
+  dt=Math.min(dt,2*3600);
+  const inc=cps()*(dt>2?1:frenzy)*dt;
+  if(inc>0){ S.orbs+=inc; S.total+=inc; }
+}
+setInterval(()=>{accrue(); paintCounts(); renderStore();},1000);
+
+/* offline: income + banked waves */
+if(S.seen){
+  const away=Math.min((Date.now()-S.seen)/1000, 2*3600);
+  const gain=cps()*away;
+  const waves=Math.floor(away/180);
+  const loot=waves*waveLoot();
+  if(away>60 && (gain>1 || loot>0)){
+    S.orbs+=gain+loot; S.total+=gain+loot;
+    setTimeout(()=>showBanner('Welcome back!<br><span class="sub">Your kingdom gathered '+fmtShort(gain)+' orbs'+(waves>0?' and repelled '+waves+' boredom wave'+(waves>1?'s':'')+' (+'+fmtShort(loot)+')':'')+'.</span>'),600);
+  }else if(gain>0){ S.orbs+=gain; S.total+=gain; }
+}
+
+/* ==================== main loop ==================== */
+let last=performance.now(), uiAcc=0, saveAcc=0;
+function frame(now){
+  const dt=Math.min((now-last)/1000,.25); last=now;
+  accrue();
+  uiAcc+=dt;
+  if(uiAcc>0.25){ paintCounts(); uiAcc=0; }
+  // wave timer
+  if(!waveRunning){
+    const left=Math.max(0,(waveAt-Date.now())/1000);
+    if(left<=0) doWave();
+    else{
+      waveBar.textContent='⚔️ NEXT BOREDOM WAVE: '+Math.floor(left/60)+':'+String(Math.floor(left%60)).padStart(2,'0')+'  ·  LOOT IF REPELLED: '+fmt(waveLoot());
+      waveBar.classList.toggle('soon',left<10);
+    }
+  }else{
+    waveBar.textContent='⚔️ BOREDOM WAVE INCOMING — TAP THE BLOBS!';
+    waveBar.classList.add('soon');
+  }
+  giftT-=dt;
+  if(giftT<=0){ giftT=50+Math.random()*70; if(S.total>150) spawnGift(); }
+  fc.clearRect(0,0,fx.width,fx.height);
+  parts=parts.filter(p=>p.life>0);
+  for(const p of parts){
+    p.life-=dt*1.7; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=380*dt;
+    fc.globalAlpha=Math.max(p.life,0);
+    fc.fillStyle=`rgb(${p.col})`;
+    fc.beginPath(); fc.arc(p.x,p.y,p.r,0,7); fc.fill();
+  }
+  fc.globalAlpha=1;
+  saveAcc+=dt; if(saveAcc>5){ save(); saveAcc=0; }
+  requestAnimationFrame(frame);
+}
+function save(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({orbs:S.orbs,total:S.total,clicks:S.clicks,owned:S.owned,wall:S.wall,castle:S.castle,upg:S.upg,name:S.name,seen:Date.now()})); }catch(e){}
+}
+addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+
+renderAll();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

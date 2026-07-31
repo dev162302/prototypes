@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1B6BDC">
+<meta name="description" content="RIPPLE — the 15-second waiting game. Novo Nordisk × Gamescom 2026.">
+<title>RIPPLE — The Waiting Game</title>
+<style>
+  :root{
+    --bg:#1B6BDC; --bg2:#1257BE; --blue:#001965; --tint:#B1D5F2; --magenta:#C6007E;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:radial-gradient(120% 120% at 50% 42%, var(--bg) 0%, #1660CC 55%, var(--bg2) 100%);
+    color:#fff;overflow:hidden;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    position:fixed;top:0;left:0;right:0;z-index:10;
+    padding:16px 22px 0;text-align:center;pointer-events:none;
+  }
+  .eyebrow{font-size:10px;letter-spacing:3.5px;font-weight:700;color:rgba(255,255,255,.75);}
+  #timer{
+    font-size:52px;font-weight:800;line-height:1.05;margin-top:4px;
+    text-shadow:0 2px 20px rgba(0,25,101,.35);font-variant-numeric:tabular-nums;
+    transition:color .2s;
+  }
+  #timer.low{color:#FF9AD1;}
+  #tapsLine{
+    font-size:15px;font-weight:800;letter-spacing:2.5px;margin-top:2px;
+    color:rgba(255,255,255,.95);font-variant-numeric:tabular-nums;
+  }
+  #hint{
+    margin-top:8px;font-size:12.5px;font-style:italic;font-weight:600;
+    color:rgba(255,255,255,.85);transition:opacity .4s;padding:0 24px;
+  }
+
+  #langBtn{
+    position:fixed;top:14px;right:14px;z-index:50;border:none;cursor:pointer;
+    background:rgba(255,255,255,.16);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+    color:#fff;border-radius:50px;padding:8px 13px;
+    font-family:inherit;font-size:10px;font-weight:800;letter-spacing:1.5px;
+  }
+  #langBtn span{color:rgba(255,255,255,.5);}
+  #langBtn span.on{color:#fff;}
+
+  /* ---------- world ---------- */
+  #world{position:absolute;inset:0;overflow:hidden;}
+  .standing{
+    position:absolute;left:var(--cx);top:var(--cy);translate:-50% -50%;
+    border-radius:50%;pointer-events:none;
+    background:radial-gradient(closest-side, rgba(255,255,255,var(--o,.05)) 0 97.5%, rgba(255,255,255,0) 100%);
+    animation:standPulse 7s ease-in-out infinite;
+  }
+  @keyframes standPulse{0%,100%{opacity:.85;}50%{opacity:1;}}
+
+  /* official bull, positioned so the ring sits exactly where the logo disc lives.
+     --bw caps the bull at 55vh so the WHOLE mark always fits; ring = 0.306 × bull (logo-exact). */
+  :root{--bw:min(60vmin,55vh);--cx:50%;--cy:40%;}
+  #bull{
+    position:absolute;left:var(--cx);top:var(--cy);
+    width:var(--bw);translate:-22.8% 2.7%;
+    opacity:.26;pointer-events:none;
+  }
+
+  #disc{
+    position:absolute;left:var(--cx);top:var(--cy);translate:-50% -50%;z-index:5;
+    width:calc(var(--bw)*.306);aspect-ratio:1;border-radius:50%;cursor:pointer;
+    border:calc(var(--bw)*.0728) solid #fff;background:transparent;
+    box-shadow:0 0 50px rgba(255,255,255,.3);
+    transition:transform .06s ease;
+    animation:discBreathe 3.6s ease-in-out infinite;
+  }
+  #disc.squish{transform:scale(.93);}
+  @keyframes discBreathe{
+    0%,100%{box-shadow:0 0 50px rgba(255,255,255,.3);}
+    50%{box-shadow:0 0 75px rgba(255,255,255,.5);}
+  }
+
+  .ripple{
+    position:absolute;left:var(--cx);top:var(--cy);translate:-50% -50%;z-index:3;
+    width:calc(var(--bw)*.306);aspect-ratio:1;border-radius:50%;pointer-events:none;
+    border:3px solid rgba(255,255,255,.65);
+    box-shadow:0 0 24px rgba(255,255,255,.35), inset 0 0 24px rgba(255,255,255,.2);
+    animation:rip 1.7s cubic-bezier(.16,.6,.4,1) forwards;
+  }
+  @keyframes rip{
+    from{transform:scale(1);opacity:1;}
+    to{transform:scale(13);opacity:0;}
+  }
+  .floatUp{
+    position:absolute;z-index:8;font-weight:800;font-size:19px;color:#fff;pointer-events:none;
+    text-shadow:0 2px 12px rgba(0,25,101,.6);
+    animation:riseUp .9s ease-out forwards;
+  }
+  @keyframes riseUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-64px);}}
+
+  /* the water remembers — permanent faint rings from your cumulative total */
+  .memRing{
+    position:absolute;left:var(--cx);top:var(--cy);translate:-50% -50%;z-index:1;
+    border-radius:50%;pointer-events:none;
+    border:1.5px solid rgba(255,255,255,var(--mo,.08));
+  }
+
+  /* crowd ripple — other players in the queue */
+  .crowdRip{
+    position:absolute;z-index:1;border-radius:50%;pointer-events:none;
+    translate:-50% -50%;border:2px solid rgba(255,255,255,.3);
+    animation:crowdRip 2.4s ease-out forwards;
+  }
+  @keyframes crowdRip{from{transform:scale(.25);opacity:.65;}to{transform:scale(3.2);opacity:0;}}
+
+  /* ---------- pre-loader: the concept in miniature ---------- */
+  #intro{
+    position:fixed;inset:0;z-index:60;
+    background:radial-gradient(120% 120% at 50% 42%, var(--bg) 0%, #1660CC 55%, var(--bg2) 100%);
+    transition:opacity .55s ease;
+  }
+  #intro.off{opacity:0;pointer-events:none;}
+  .iEyebrow{
+    position:absolute;top:22px;left:0;right:0;text-align:center;
+    font-size:10px;letter-spacing:3.5px;font-weight:700;color:rgba(255,255,255,.75);
+    opacity:0;animation:iFade .6s ease .15s forwards;
+  }
+  .iTitle{
+    position:absolute;top:46px;left:0;right:0;text-align:center;
+    font-size:42px;font-weight:800;letter-spacing:12px;text-indent:12px;
+    text-shadow:0 2px 20px rgba(0,25,101,.35);
+    opacity:0;animation:iFade .7s ease 1.15s forwards;
+  }
+  .iSkip{
+    position:absolute;bottom:calc(24px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
+    font-size:10px;letter-spacing:2.5px;font-weight:700;color:rgba(255,255,255,.55);
+    opacity:0;animation:iFade .6s ease 1.5s forwards;
+  }
+  @keyframes iFade{to{opacity:1;}}
+  #iDisc{
+    position:absolute;left:var(--cx);top:var(--cy);
+    width:calc(var(--bw)*.306);aspect-ratio:1;border-radius:50%;
+    border:calc(var(--bw)*.0728) solid #fff;
+    box-shadow:0 0 50px rgba(255,255,255,.35);
+    transform:translate(-50%,-50%) translateY(-70vh);opacity:0;
+    animation:iDrop .95s cubic-bezier(.5,.02,.72,.9) .25s forwards;
+  }
+  @keyframes iDrop{
+    0%{transform:translate(-50%,-50%) translateY(-70vh);opacity:0;}
+    15%{opacity:1;}
+    72%{transform:translate(-50%,-50%) translateY(0) scale(1);}
+    82%{transform:translate(-50%,-50%) scale(1.12,.88);}
+    92%{transform:translate(-50%,-50%) scale(.97,1.05);}
+    100%{transform:translate(-50%,-50%) scale(1);opacity:1;}
+  }
+
+  /* ---------- overlays ---------- */
+  .ovl{
+    position:fixed;inset:0;z-index:40;display:none;
+    background:rgba(0,25,101,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    align-items:center;justify-content:center;padding:22px;
+  }
+  .ovl.on{display:flex;}
+  .mcard{
+    background:#fff;color:var(--blue);border-radius:24px;
+    padding:28px 26px 24px;max-width:390px;width:100%;text-align:center;
+    box-shadow:0 24px 70px rgba(0,17,63,.5);
+    animation:cardIn .4s cubic-bezier(.34,1.56,.64,1);
+    max-height:calc(100vh - 44px);overflow:auto;
+  }
+  @keyframes cardIn{from{transform:scale(.85);opacity:0;}to{transform:scale(1);opacity:1;}}
+  .mEyebrow{font-size:10px;letter-spacing:3px;font-weight:700;color:var(--magenta);}
+  .mSub{font-size:12px;font-weight:600;color:#66759E;margin-top:8px;line-height:1.55;}
+
+  #rScore{font-size:62px;font-weight:800;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums;}
+  #rLbl{font-size:11px;letter-spacing:3px;font-weight:700;color:#3B97DE;margin-top:2px;}
+  #rRank{font-size:17px;font-weight:800;margin-top:11px;}
+  #rStats{font-size:12.5px;font-weight:600;color:#66759E;margin-top:5px;line-height:1.6;}
+  #rBest{font-size:12px;font-weight:700;color:var(--magenta);margin-top:4px;}
+  #rRanks{font-size:12.5px;font-weight:800;margin-top:7px;min-height:15px;font-variant-numeric:tabular-nums;}
+  #rRanks b{color:var(--magenta);}
+
+  .btn{
+    display:block;width:100%;margin-top:10px;border:none;border-radius:50px;
+    padding:13px 0;cursor:pointer;
+    font-family:inherit;font-size:13px;font-weight:800;letter-spacing:2px;
+  }
+  .btn.primary{background:var(--blue);color:#fff;}
+  .btn.ghost{background:transparent;color:var(--blue);border:2px solid #D7E4F5;}
+  .btn:active{transform:scale(.98);}
+  #seeBoard{margin-top:16px;}
+
+  #rClaim{font-size:9.5px;letter-spacing:1.8px;font-weight:700;color:#66759E;margin-top:15px;line-height:1.7;}
+  #rClaim b{color:var(--blue);}
+  #rCorp{margin-top:9px;font-size:11.5px;font-weight:600;color:#66759E;line-height:1.5;}
+  #rCorp a{color:var(--magenta);font-weight:800;text-decoration:none;}
+
+  /* ---------- nickname ---------- */
+  #nickIn{
+    width:100%;margin-top:14px;border:2px solid #D7E4F5;border-radius:14px;
+    padding:13px 14px;font-family:inherit;font-size:16px;font-weight:700;
+    color:var(--blue);text-align:center;outline:none;
+  }
+  #nickIn:focus{border-color:var(--bg);}
+  #nickErr{font-size:11px;font-weight:700;color:var(--magenta);margin-top:6px;min-height:14px;}
+
+  /* ---------- leaderboard ---------- */
+  #tabs{display:flex;gap:6px;margin-top:14px;background:#EAF3FC;border-radius:50px;padding:4px;}
+  .tab{
+    flex:1;border:none;border-radius:50px;padding:9px 0;cursor:pointer;
+    font-family:inherit;font-size:11px;font-weight:800;letter-spacing:2px;
+    color:#3B97DE;background:transparent;
+  }
+  .tab.on{background:var(--blue);color:#fff;}
+  #rows{margin-top:12px;max-height:36vh;overflow:auto;}
+  .row{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;
+    font-size:14px;font-weight:700;color:var(--blue);text-align:left;
+  }
+  #rows .row:nth-child(even){background:#F4F8FD;}
+  .row .rk{width:36px;flex:none;color:#66759E;font-variant-numeric:tabular-nums;}
+  .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .row .sc{flex:none;font-weight:800;font-variant-numeric:tabular-nums;}
+  .row.me{background:#FCE9F4 !important;outline:2px solid var(--magenta);}
+  .row.me .rk{color:var(--magenta);}
+  .row .youTag{
+    flex:none;font-size:8.5px;letter-spacing:1.5px;font-weight:800;color:#fff;
+    background:var(--magenta);border-radius:20px;padding:2px 7px;
+  }
+  #mePinned{margin-top:6px;}
+  #bState{font-size:12px;font-weight:700;color:#66759E;margin-top:14px;min-height:15px;}
+  #bUpdated{font-size:9px;letter-spacing:1.5px;font-weight:700;color:#9AABCB;margin-top:10px;}
+  #bCrowd{font-size:11px;font-style:italic;font-weight:600;color:#66759E;margin-top:4px;line-height:1.5;}
+  .aboutLink{
+    display:inline-block;margin-top:12px;font-size:10px;letter-spacing:2px;
+    font-weight:800;color:#3B97DE;text-decoration:none;
+  }
+
+  /* ---------- footer ---------- */
+  footer{
+    position:fixed;left:0;right:0;bottom:0;z-index:10;
+    padding:0 18px calc(16px + env(safe-area-inset-bottom));
+    display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+    pointer-events:none;
+  }
+  #fLinks{font-size:9px;letter-spacing:2px;font-weight:700;margin-bottom:6px;}
+  #fLinks a{color:rgba(255,255,255,.75);text-decoration:none;pointer-events:auto;padding:6px 0;}
+  #fLinks a:active{color:#fff;}
+  #claim{
+    font-size:11px;letter-spacing:2.5px;font-weight:700;line-height:1.7;
+    color:rgba(255,255,255,.9);
+  }
+  #claim b{color:#fff;}
+  footer img{width:84px;opacity:.95;}
+
+  @media (max-width:600px){
+    #timer{font-size:46px;}
+    footer img{width:70px;}
+    #claim{font-size:9.5px;letter-spacing:2px;}
+    .iTitle{font-size:34px;}
+    #langBtn{top:44px;}   /* below the eyebrow line so it never overlaps */
+  }
+  /* portrait: bigger composition, nudged left so the whole bull fits the narrow width */
+  @media (orientation:portrait){
+    :root{--bw:min(69vmin,55vh);--cx:44%;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .ripple{animation-duration:.5s;}
+    .standing,#disc,.crowdRip{animation:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="intro">
+  <div class="iEyebrow" data-i18n="eyebrow">NOVO NORDISK · GAMESCOM 2026</div>
+  <div class="iTitle">RIPPLE</div>
+  <div id="iDisc"></div>
+  <div class="iSkip" data-i18n="skip"></div>
+</div>
+
+<button id="langBtn" aria-label="Language / Sprache"><span id="lEn">EN</span> · <span id="lDe">DE</span></button>
+
+<header>
+  <div class="eyebrow" data-i18n="eyebrow">NOVO NORDISK · GAMESCOM 2026</div>
+  <div id="timer">15.0</div>
+  <div id="tapsLine">RIPPLES: 0</div>
+  <div id="hint"></div>
+</header>
+
+<div id="world">
+  <img id="bull" src="assets/novo-bull-solo-white.png" alt="">
+  <div id="disc" role="button" aria-label="Tap target"></div>
+</div>
+
+<div id="result" class="ovl">
+  <div class="mcard">
+    <div class="mEyebrow" data-i18n="timesUp">TIME&rsquo;S UP</div>
+    <div id="rScore">0</div>
+    <div id="rLbl" data-i18n="in15"></div>
+    <div id="rRank"></div>
+    <div id="rStats"></div>
+    <div id="rBest"></div>
+    <div id="rRanks"></div>
+    <button id="seeBoard" class="btn primary"></button>
+    <button id="again" class="btn ghost"></button>
+    <div id="rClaim"><span data-i18n="tag1"></span><br><b data-i18n="tag2"></b></div>
+    <div id="rCorp"><span data-i18n="corp"></span><br><a href="https://www.novonordisk.com" target="_blank" rel="noopener">novonordisk.com &rarr;</a></div>
+  </div>
+</div>
+
+<div id="nameModal" class="ovl">
+  <div class="mcard">
+    <div class="mEyebrow" data-i18n="nickTitle"></div>
+    <div class="mSub" data-i18n="nickSub"></div>
+    <input id="nickIn" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div id="nickErr"></div>
+    <button id="nickGo" class="btn primary" data-i18n="saveGo"></button>
+  </div>
+</div>
+
+<div id="boardOvl" class="ovl">
+  <div class="mcard">
+    <div class="mEyebrow" data-i18n="board"></div>
+    <div id="tabs">
+      <button class="tab on" id="tabToday" data-i18n="today"></button>
+      <button class="tab" id="tabAll" data-i18n="alltime"></button>
+    </div>
+    <div id="rows"></div>
+    <div id="mePinned"></div>
+    <div id="bState"></div>
+    <div id="bCrowd" data-i18n="crowd"></div>
+    <div id="bUpdated"></div>
+    <button id="playAgain" class="btn primary" data-i18n="playAgain"></button>
+    <a class="aboutLink" href="novo-about.html" data-i18n="aboutLong"></a>
+  </div>
+</div>
+
+<footer>
+  <div>
+    <nav id="fLinks">
+      <a href="novo-about.html" data-i18n="about">ABOUT</a>
+      &nbsp;·&nbsp;
+      <a href="novo-about.html#privacy" data-i18n="legal">PRIVACY / IMPRESSUM</a>
+    </nav>
+    <div id="claim"><span data-i18n="tag1"></span><br><b data-i18n="tag2"></b></div>
+  </div>
+  <img src="assets/novo-logo-white.png" alt="Novo Nordisk">
+</footer>
+
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   CONFIG — set API_BASE to the deployed leaderboard URL to go live.
+   Empty string = self-contained demo mode (localStorage leaderboard).
+   API contract: see leaderboard-backend/README.md
+===================================================================== */
+const API_BASE = '';
+const ROUND = 15;
+const SCORE_CAP = 150;            // humanly-possible ceiling, enforced server-side too
+
+const SAVE_KEY='novo-ripple-v2';
+const LANG_KEY='novo-lang';
+const NAME_KEY='novo-name';
+const DEMO_KEY='novo-lb-demo-v1';
+const QUEUE_KEY='novo-queue-v1';
+
+/* ---------- i18n (~30 strings × EN/DE) ---------- */
+const STR={
+  en:{
+    eyebrow:'NOVO NORDISK · GAMESCOM 2026',
+    ripples:'RIPPLES',
+    hints:[
+      'Tap the circle to start. 15 seconds. As many ripples as you can.',
+      'One tap starts the clock. Then do not stop.',
+      'Two thumbs are legal. Encouraged, even.',
+      "Some things are worth the wait. Your health isn't.",
+      'Every ripple starts the same way: one tap.',
+    ],
+    go:'GO!',
+    timesUp:'TIME’S UP',
+    in15:'RIPPLES IN 15 SECONDS',
+    rps:'ripples per second',
+    newBest:'\u{1F389} NEW PERSONAL BEST!',
+    best:'Personal best',
+    seeBoard:'SEE LEADERBOARD',
+    again:'GO AGAIN',
+    tag1:'SOME THINGS ARE WORTH THE WAIT.',
+    tag2:'YOUR HEALTH ISN’T.',
+    corp:'Curious what we do while you wait?',
+    nickTitle:'JOIN THE LEADERBOARD',
+    nickSub:'Pick a nickname. No account, no email — nothing but your name on the board.',
+    nickPh:'Your nickname',
+    errShort:'2–12 characters, please.',
+    errChars:'Letters, numbers, spaces, - and _ only.',
+    errRude:'Keep it queue-friendly \u{1F642} Try another.',
+    saveGo:'SAVE & SEE RANKING',
+    board:'LEADERBOARD',
+    today:'TODAY',
+    alltime:'ALL-TIME',
+    you:'YOU',
+    crowd:'Every ring you see is someone else in this queue.',
+    updatedToday:'RESETS DAILY AT MIDNIGHT · TOP 10 SHOWN',
+    updatedAll:'WHOLE CAMPAIGN · TOP 10 SHOWN',
+    playAgain:'PLAY AGAIN',
+    about:'ABOUT',
+    aboutLong:'ABOUT THIS CAMPAIGN →',
+    legal:'PRIVACY / IMPRESSUM',
+    loading:'Loading…',
+    offline:'Score saved — it will sync once you’re back online.',
+    todayWord:'today', alltimeWord:'all-time',
+    skip:'TAP TO SKIP',
+    ranks:['Warming up \u{1F4A7}','Steady stream \u{1F30A}','Making waves \u{1F30A}\u{1F30A}','Rapid ripples ⚡','Human tsunami (the friendly kind) \u{1F3C6}'],
+  },
+  de:{
+    eyebrow:'NOVO NORDISK · GAMESCOM 2026',
+    ripples:'WELLEN',
+    hints:[
+      'Tippe auf den Kreis, um zu starten. 15 Sekunden. So viele Wellen wie möglich.',
+      'Ein Tipp startet die Uhr. Dann bloß nicht aufhören.',
+      'Zwei Daumen sind erlaubt. Sogar erwünscht.',
+      'Manche Dinge sind das Warten wert. Deine Gesundheit nicht.',
+      'Jede Welle beginnt gleich: mit einem Tipp.',
+    ],
+    go:'LOS!',
+    timesUp:'ZEIT UM',
+    in15:'WELLEN IN 15 SEKUNDEN',
+    rps:'Wellen pro Sekunde',
+    newBest:'\u{1F389} NEUER PERSÖNLICHER REKORD!',
+    best:'Persönlicher Rekord',
+    seeBoard:'ZUR RANGLISTE',
+    again:'NOCHMAL',
+    tag1:'MANCHE DINGE SIND DAS WARTEN WERT.',
+    tag2:'DEINE GESUNDHEIT NICHT.',
+    corp:'Neugierig, was wir tun, während du wartest?',
+    nickTitle:'AB AUF DIE RANGLISTE',
+    nickSub:'Wähle einen Nickname. Kein Konto, keine E-Mail — nur dein Name auf dem Board.',
+    nickPh:'Dein Nickname',
+    errShort:'Bitte 2–12 Zeichen.',
+    errChars:'Nur Buchstaben, Zahlen, Leerzeichen, - und _.',
+    errRude:'Bitte freundlich bleiben \u{1F642} Versuch einen anderen.',
+    saveGo:'SPEICHERN & RANG SEHEN',
+    board:'RANGLISTE',
+    today:'HEUTE',
+    alltime:'GESAMT',
+    you:'DU',
+    crowd:'Jeder Ring, den du siehst, ist jemand anderes in dieser Schlange.',
+    updatedToday:'RESET TÄGLICH UM MITTERNACHT · TOP 10',
+    updatedAll:'GESAMTE KAMPAGNE · TOP 10',
+    playAgain:'NOCHMAL SPIELEN',
+    about:'ÜBER',
+    aboutLong:'ÜBER DIESE KAMPAGNE →',
+    legal:'DATENSCHUTZ / IMPRESSUM',
+    loading:'Lädt…',
+    offline:'Score gespeichert — wird synchronisiert, sobald du wieder online bist.',
+    todayWord:'heute', alltimeWord:'gesamt',
+    skip:'TIPPEN ZUM ÜBERSPRINGEN',
+    ranks:['Aufwärmen \u{1F4A7}','Stetiger Strom \u{1F30A}','Wellengang \u{1F30A}\u{1F30A}','Blitzwellen ⚡','Menschlicher Tsunami (der nette) \u{1F3C6}'],
+  },
+};
+let lang=(()=>{ try{ const s=localStorage.getItem(LANG_KEY); if(s==='en'||s==='de') return s; }catch(e){}
+  return (navigator.language||'').toLowerCase().startsWith('de')?'de':'en'; })();
+const t=k=>STR[lang][k];
+
+const RANK_AT=[0,40,70,100,130];
+
+/* ---------- saved state ---------- */
+let S={best:0, plays:0, total:0};
+try{
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(raw){const p=JSON.parse(raw); if(p&&typeof p.best==='number') S=Object.assign(S,p);}
+}catch(e){}
+function save(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({best:S.best,plays:S.plays,total:S.total,seen:Date.now()})); }catch(e){}
+}
+
+const $=id=>document.getElementById(id);
+const world=$('world'), disc=$('disc'), timerEl=$('timer'), tapsEl=$('tapsLine'), hint=$('hint');
+
+/* ---------- i18n apply ---------- */
+function applyI18n(){
+  document.documentElement.lang=lang;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{ el.textContent=t(el.dataset.i18n); });
+  $('nickIn').placeholder=t('nickPh');
+  $('seeBoard').textContent=t('seeBoard');
+  $('again').textContent=t('again');
+  $('lEn').classList.toggle('on',lang==='en');
+  $('lDe').classList.toggle('on',lang==='de');
+  tapsEl.textContent=t('ripples')+': '+taps;
+  if(mode==='idle') hint.textContent=t('hints')[hintI%t('hints').length];
+  else if(mode==='run') hint.textContent=t('go');
+  if(lastRound && $('result').classList.contains('on')) fillCard();
+  if($('boardOvl').classList.contains('on')) renderBoard();
+}
+$('langBtn').addEventListener('click',()=>{
+  lang=lang==='en'?'de':'en';
+  try{localStorage.setItem(LANG_KEY,lang);}catch(e){}
+  applyI18n();
+});
+
+/* ---------- standing rings (sizes from the approved reference frame) ---------- */
+[64,105,144,185].forEach((size,i)=>{
+  const d=document.createElement('div');
+  d.className='standing';
+  d.style.width=size+'vmin'; d.style.height=size+'vmin';
+  d.style.setProperty('--o',(0.07-i*0.005).toFixed(3));
+  d.style.animationDelay=(i*0.7)+'s';
+  world.insertBefore(d, world.firstChild);
+});
+
+/* ---------- the water remembers: faint permanent rings from cumulative taps ---------- */
+function renderMemory(){
+  world.querySelectorAll('.memRing').forEach(el=>el.remove());
+  const n=Math.min(6, Math.floor(S.total/100));
+  for(let i=0;i<n;i++){
+    const d=document.createElement('div');
+    d.className='memRing';
+    const scale=(1.7+i*0.85).toFixed(2);
+    d.style.width='calc(var(--bw) * '+(0.306*scale).toFixed(3)+')';
+    d.style.aspectRatio='1';
+    d.style.setProperty('--mo',(0.10-i*0.012).toFixed(3));
+    world.insertBefore(d, world.firstChild);
+  }
+}
+renderMemory();
+
+/* ---------- audio ---------- */
+let AC=null;
+const TONES=[392,440,494,587,659,784,880];
+function pluck(f,g=0.09){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(), gn=AC.createGain();
+    o.type='sine'; o.frequency.value=f;
+    gn.gain.setValueAtTime(g,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.4);
+    o.connect(gn); gn.connect(AC.destination);
+    o.start(); o.stop(AC.currentTime+0.4);
+  }catch(e){}
+}
+
+/* ---------- pre-loader: disc drops like a droplet, ripple becomes the field ---------- */
+(function intro(){
+  const el=$('intro');
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let done=false;
+  const timers=[];
+  function ringIn(){
+    const r=document.createElement('div'); r.className='ripple';
+    el.appendChild(r); setTimeout(()=>r.remove(),1800);
+  }
+  function dismiss(){
+    if(done) return; done=true;
+    timers.forEach(clearTimeout);
+    el.classList.add('off');
+    setTimeout(()=>el.remove(),600);
+  }
+  if(reduced){ el.remove(); return; }
+  timers.push(setTimeout(ringIn,1180));
+  timers.push(setTimeout(ringIn,1400));
+  timers.push(setTimeout(ringIn,1680));
+  timers.push(setTimeout(dismiss,2450));
+  el.addEventListener('pointerdown',dismiss);
+})();
+
+/* ---------- game state ---------- */
+let mode='idle';   // idle | run | done
+let taps=0, endAt=0, startAt=0, tickInt=0, roundToken='';
+let lastRound=null;
+
+function rippleFx(){
+  const r=document.createElement('div');
+  r.className='ripple';
+  world.appendChild(r);
+  setTimeout(()=>r.remove(),1800);
+}
+
+function newToken(){
+  try{ return crypto.randomUUID(); }
+  catch(e){ return 'tk-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10); }
+}
+
+disc.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  if(mode==='done') return;
+  if(mode==='idle'){
+    mode='run'; taps=0;
+    startAt=Date.now(); endAt=startAt+ROUND*1000;
+    roundToken=newToken();
+    hint.textContent=t('go');
+    tickInt=setInterval(tick,50);
+  }
+  taps++;
+  tapsEl.textContent=t('ripples')+': '+taps;
+  disc.classList.add('squish'); setTimeout(()=>disc.classList.remove('squish'),60);
+  rippleFx();
+  const f=document.createElement('div');
+  f.className='floatUp'; f.textContent='+1';
+  f.style.left=e.clientX+'px'; f.style.top=(e.clientY-30)+'px';
+  document.body.appendChild(f); setTimeout(()=>f.remove(),900);
+  pluck(TONES[Math.min(Math.floor(taps/10),TONES.length-1)]);
+  if(navigator.vibrate) navigator.vibrate(6);
+});
+
+function tick(){
+  const left=Math.max(0,(endAt-Date.now())/1000);
+  timerEl.textContent=left.toFixed(1);
+  timerEl.classList.toggle('low',left<=3);
+  if(left<=0) finish();
+}
+
+function rankName(n){
+  let idx=0;
+  for(let i=0;i<RANK_AT.length;i++) if(n>=RANK_AT[i]) idx=i;
+  return {idx};
+}
+
+function fillCard(){
+  const L=lastRound;
+  $('rScore').textContent=L.taps.toLocaleString(lang==='de'?'de-DE':'en-US');
+  $('rRank').textContent=t('ranks')[L.rankIdx];
+  $('rStats').textContent=(L.taps/ROUND).toFixed(1)+' '+t('rps');
+  $('rBest').textContent=L.isBest ? t('newBest') : t('best')+': '+S.best.toLocaleString(lang==='de'?'de-DE':'en-US');
+  renderRankLine();
+}
+function renderRankLine(){
+  const el=$('rRanks'); const L=lastRound;
+  if(!L){ el.textContent=''; return; }
+  if(L.queued){ el.textContent=t('offline'); return; }
+  if(L.ranks) el.innerHTML='<b>#'+L.ranks.t+'</b> '+t('todayWord')+' · <b>#'+L.ranks.a+'</b> '+t('alltimeWord');
+  else el.textContent='';
+}
+
+function finish(){
+  clearInterval(tickInt);
+  mode='done';
+  timerEl.textContent='0.0';
+  const isBest=taps>S.best;
+  if(isBest) S.best=taps;
+  S.plays++; S.total+=taps;
+  save(); renderMemory();
+  // celebratory ripple burst
+  for(let i=0;i<6;i++) setTimeout(rippleFx,i*140);
+  pluck(TONES[4],.11); setTimeout(()=>pluck(TONES[5],.11),130); setTimeout(()=>pluck(TONES[6],.12),260);
+  if(navigator.vibrate) navigator.vibrate([15,40,15,40,25]);
+
+  lastRound={
+    taps, score:Math.min(taps,SCORE_CAP), durMs:Date.now()-startAt,
+    token:roundToken, rankIdx:rankName(taps).idx, isBest,
+    ranks:null, queued:false, submitted:false,
+  };
+  fillCard();
+  const nm=getName();
+  if(nm) submitScore(nm);
+  setTimeout(()=>{$('result').classList.add('on');},700);
+}
+
+function resetGame(){
+  $('result').classList.remove('on');
+  $('boardOvl').classList.remove('on');
+  mode='idle'; taps=0;
+  timerEl.textContent=ROUND.toFixed(1);
+  timerEl.classList.remove('low');
+  tapsEl.textContent=t('ripples')+': 0';
+  hintI=0; hint.textContent=t('hints')[0];
+}
+$('again').addEventListener('click',resetGame);
+$('playAgain').addEventListener('click',resetGame);
+
+/* ---------- hints (idle only) ---------- */
+let hintI=0;
+hint.textContent=t('hints')[0];
+setInterval(()=>{
+  if(mode!=='idle') return;
+  hint.style.opacity=0;
+  setTimeout(()=>{ hintI=(hintI+1)%t('hints').length; hint.textContent=t('hints')[hintI]; hint.style.opacity=1; },400);
+},8000);
+
+/* =====================================================================
+   NICKNAME — 2–12 chars, no login. Profanity-screened (EN/DE), also
+   re-checked server-side when the real backend is connected.
+===================================================================== */
+const RUDE=['fuck','fuk','fck','shit','bitch','cunt','dick','cock','pussy','anal','porn','rape','nazi','hitler','arsch','fotze','hure','wichs','schlampe','scheiss','scheiße','fick','penis','vagina','whore','slut','fag','nigg'];
+function isRude(n){
+  const flat=n.toLowerCase().replace(/[\s_\-]/g,'')
+    .replace(/0/g,'o').replace(/1/g,'i').replace(/3/g,'e').replace(/4/g,'a').replace(/5/g,'s').replace(/@/g,'a').replace(/\$/g,'s');
+  return RUDE.some(w=>flat.includes(w));
+}
+function validateName(n){
+  n=n.trim();
+  if(n.length<2||n.length>12) return {ok:false,err:t('errShort')};
+  if(!/^[\p{L}\p{N} _\-]+$/u.test(n)) return {ok:false,err:t('errChars')};
+  if(isRude(n)) return {ok:false,err:t('errRude')};
+  return {ok:true,name:n};
+}
+function getName(){ try{return localStorage.getItem(NAME_KEY)||'';}catch(e){return '';} }
+function setName(n){ try{localStorage.setItem(NAME_KEY,n);}catch(e){} }
+
+/* =====================================================================
+   LEADERBOARD LAYER — one interface, two backends.
+   demo: localStorage, seeded field of players, daily reset (Europe/Berlin)
+   remote: the leaderboard-backend API (set API_BASE above)
+===================================================================== */
+function berlinDay(){
+  try{ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin'}).format(new Date()); }
+  catch(e){ return new Date().toISOString().slice(0,10); }
+}
+const NAMES=['PixelPilgrim','QueueSlayer','RippleRider','TapTitan','ColognePro','LagLord','AFKAndy','ComboKai','NoScopeNina','StreamSteff','GGmarie','XPhunter','BossBjörn','MetaMax','LootLena','SpeedySam','DasBoot','CtrlAltDefeat','FrameDrop','HighPingHans','RespawnRita','CritCarla','ManaMia','BuffBruno','NerfNico','TiltProof','SoloQSonja','ClutchClara','EloEmil','VSyncVera','TurboTheo','KölschKing','WaitingWolf','QueueQueen','IdleIgor','StandbyStella','LoadingLuis','BufferBen','PingPia','ZeroLagZoe','OneTapOtto','ThumbThor','TapMachine','FingerFlash','WristWizard','KnuckleKnut','GamerGretel','HallFiveHero','BoothBandit','DemoDana'];
+
+function seedField(n,top,bottom){
+  const pool=NAMES.slice(); const out=[];
+  for(let i=0;i<n;i++){
+    const idx=Math.floor(Math.random()*pool.length);
+    const name=pool.length?pool.splice(idx,1)[0]:('Player'+(100+i));
+    const f=n>1 ? i/(n-1) : 0;
+    let s=Math.round(top-(top-bottom)*Math.pow(f,0.8)+(Math.random()*6-3));
+    out.push({n:name,s:Math.max(bottom,Math.min(SCORE_CAP,s))});
+  }
+  out.sort((a,b)=>b.s-a.s);
+  return out;
+}
+function upsert(list,name,score){
+  const i=list.findIndex(e=>e.n.toLowerCase()===name.toLowerCase());
+  if(i>=0){ if(score>list[i].s) list[i].s=score; }
+  else list.push({n:name,s:score});
+  list.sort((a,b)=>b.s-a.s);
+}
+function rankOf(list,name){
+  const i=list.findIndex(e=>e.n.toLowerCase()===name.toLowerCase());
+  return i<0?null:{rank:i+1,s:list[i].s};
+}
+
+const LBdemo={
+  _load(){
+    let d=null;
+    try{ d=JSON.parse(localStorage.getItem(DEMO_KEY)); }catch(e){}
+    if(!d||!Array.isArray(d.alltime)) d={alltime:seedField(40,148,55),today:null};
+    if(!d.today||d.today.date!==berlinDay()) d.today={date:berlinDay(),entries:seedField(15,132,35)};
+    return d;
+  },
+  _save(d){ try{localStorage.setItem(DEMO_KEY,JSON.stringify(d));}catch(e){} },
+  async submit(p){
+    const d=this._load();
+    upsert(d.today.entries,p.name,p.score);
+    upsert(d.alltime,p.name,p.score);
+    this._save(d);
+    return {ok:true, today:{rank:rankOf(d.today.entries,p.name).rank}, alltime:{rank:rankOf(d.alltime,p.name).rank}};
+  },
+  async board(scope){
+    const d=this._load();
+    const list=scope==='today'?d.today.entries:d.alltime;
+    const nm=getName();
+    return {entries:list.slice(0,10), me:nm?rankOf(list,nm):null};
+  },
+  async pulse(){ return {playing:40+Math.floor(Math.random()*50)}; },
+};
+
+const LBremote={
+  async submit(p){
+    const r=await fetch(API_BASE+'/api/score',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p),
+    });
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||!j.ok) throw new Error((j&&j.error)||('http '+r.status));
+    return j;
+  },
+  async board(scope){
+    const r=await fetch(API_BASE+'/api/board?scope='+scope);
+    const j=await r.json();
+    let me=null; const nm=getName();
+    if(nm){
+      try{
+        const m=await (await fetch(API_BASE+'/api/me?scope='+scope+'&name='+encodeURIComponent(nm))).json();
+        if(m&&m.me) me={rank:m.me.rank,s:m.me.s};
+      }catch(e){}
+    }
+    return {entries:(j.entries||[]).slice(0,10), me};
+  },
+  async pulse(){
+    try{ return await (await fetch(API_BASE+'/api/pulse')).json(); }
+    catch(e){ return {playing:0}; }
+  },
+};
+const LB=API_BASE?LBremote:LBdemo;
+
+/* offline queue — graceful degradation: the game never blocks on the network */
+function loadQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY))||[];}catch(e){return [];} }
+function saveQueue(q){ try{localStorage.setItem(QUEUE_KEY,JSON.stringify(q));}catch(e){} }
+async function flushQueue(){
+  if(!API_BASE) return;
+  let q=loadQueue();
+  if(!q.length) return;
+  const rest=[];
+  for(const p of q){
+    try{ await LB.submit(p); }
+    catch(e){ if(String(e.message).indexOf('duplicate')<0) rest.push(p); }
+  }
+  saveQueue(rest);
+}
+addEventListener('online',flushQueue);
+if(API_BASE) setInterval(flushQueue,30000);
+flushQueue();
+
+async function submitScore(nm){
+  const L=lastRound;
+  if(!L||L.submitted) return;
+  L.submitted=true;
+  const payload={name:nm,score:L.score,durMs:L.durMs,token:L.token};
+  try{
+    const res=await LB.submit(payload);
+    L.ranks={t:res.today.rank,a:res.alltime.rank};
+    L.queued=false;
+  }catch(e){
+    const q=loadQueue(); q.push(payload); saveQueue(q);
+    L.queued=true;
+  }
+  renderRankLine();
+}
+
+/* ---------- result buttons ---------- */
+$('seeBoard').addEventListener('click',()=>{
+  if(!getName()){
+    $('result').classList.remove('on');
+    $('nickErr').textContent='';
+    $('nameModal').classList.add('on');
+    setTimeout(()=>$('nickIn').focus(),150);
+  } else openBoard();
+});
+$('nickGo').addEventListener('click',()=>{
+  const v=validateName($('nickIn').value);
+  if(!v.ok){ $('nickErr').textContent=v.err; return; }
+  setName(v.name);
+  $('nameModal').classList.remove('on');
+  const nm=getName();
+  if(lastRound&&!lastRound.submitted) submitScore(nm);
+  openBoard();
+});
+$('nickIn').addEventListener('keydown',e=>{ if(e.key==='Enter') $('nickGo').click(); });
+
+/* ---------- leaderboard UI ---------- */
+let boardScope='today';
+$('tabToday').addEventListener('click',()=>{ boardScope='today'; renderBoard(); });
+$('tabAll').addEventListener('click',()=>{ boardScope='alltime'; renderBoard(); });
+
+function rowEl(rank,entry,isMe){
+  const d=document.createElement('div');
+  d.className='row'+(isMe?' me':'');
+  const medal=rank===1?'\u{1F947}':rank===2?'\u{1F948}':rank===3?'\u{1F949}':'';
+  d.innerHTML='<span class="rk">'+(medal||('#'+rank))+'</span>'
+    +'<span class="nm"></span>'
+    +(isMe?'<span class="youTag">'+t('you')+'</span>':'')
+    +'<span class="sc">'+entry.s+'</span>';
+  d.querySelector('.nm').textContent=entry.n;
+  return d;
+}
+
+async function renderBoard(){
+  $('tabToday').classList.toggle('on',boardScope==='today');
+  $('tabAll').classList.toggle('on',boardScope==='alltime');
+  $('bUpdated').textContent=t(boardScope==='today'?'updatedToday':'updatedAll');
+  const rows=$('rows'), pin=$('mePinned'), state=$('bState');
+  rows.innerHTML=''; pin.innerHTML='';
+  state.textContent=t('loading');
+  let data;
+  try{ data=await LB.board(boardScope); }
+  catch(e){ state.textContent=t('offline'); return; }
+  state.textContent='';
+  const nm=getName().toLowerCase();
+  let meShown=false;
+  data.entries.forEach((en,i)=>{
+    const isMe=!!nm&&en.n.toLowerCase()===nm;
+    if(isMe) meShown=true;
+    rows.appendChild(rowEl(i+1,en,isMe));
+  });
+  if(!meShown&&data.me) pin.appendChild(rowEl(data.me.rank,{n:getName(),s:data.me.s},true));
+}
+
+function openBoard(){
+  $('result').classList.remove('on');
+  boardScope='today';
+  $('boardOvl').classList.add('on');
+  renderBoard();
+}
+
+/* =====================================================================
+   CROWD RIPPLE — the background pulses with other players' games.
+   Demo: simulated. Live: rate driven by GET /api/pulse.
+===================================================================== */
+let crowdPlaying=60;
+async function pollPulse(){
+  try{ crowdPlaying=(await LB.pulse()).playing||0; }catch(e){}
+}
+pollPulse(); setInterval(pollPulse,20000);
+
+(function crowdLoop(){
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function spawn(){
+    if(reduced||document.hidden||crowdPlaying<=0) return;
+    if(mode==='run'&&Math.random()<0.5) return;   // lighter during a round
+    const d=document.createElement('div');
+    d.className='crowdRip';
+    const sz=18+Math.random()*30;
+    d.style.width=sz+'vmin'; d.style.height=sz+'vmin';
+    d.style.left=(6+Math.random()*88)+'%';
+    d.style.top=(10+Math.random()*72)+'%';
+    world.appendChild(d);
+    setTimeout(()=>d.remove(),2500);
+  }
+  setInterval(()=>{
+    const chance=Math.min(0.9,crowdPlaying/100);
+    if(Math.random()<chance) spawn();
+  },1600);
+})();
+
+/* ---------- boot ---------- */
+applyI18n();
+addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+setTimeout(rippleFx,2600);
+setTimeout(rippleFx,3400);
+})();
+</script>
+</body>
+</html>

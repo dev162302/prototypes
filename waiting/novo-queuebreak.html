@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE QUEUE BREAK — The Waiting Game</title>
+<style>
+  :root{
+    --blue:#001965; --bg:#27427E; --lblue:#3B97DE; --tint:#B1D5F2; --magenta:#C6007E;
+    --line:rgba(226,240,250,.75);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:var(--bg);color:#fff;overflow:hidden;
+    user-select:none;-webkit-user-select:none;touch-action:none;
+  }
+  .serif{font-family:Georgia,'Times New Roman',serif;font-style:italic;}
+
+  /* ---------- dreamy backdrop ---------- */
+  #back{position:fixed;inset:0;overflow:hidden;background:
+    radial-gradient(120% 120% at 50% 45%, #35528F 0%, var(--bg) 55%, #1B3060 100%);}
+  .blob{position:absolute;border-radius:50%;filter:blur(70px);}
+  .blobA{width:70vmax;height:46vmax;left:8%;top:16%;background:rgba(177,213,242,.34);transform:rotate(-14deg);}
+  .blobB{width:46vmax;height:34vmax;right:2%;top:38%;background:rgba(255,255,255,.16);transform:rotate(10deg);}
+  .blobC{width:34vmax;height:26vmax;left:30%;bottom:4%;background:rgba(59,151,222,.30);}
+  #backBull{
+    position:absolute;left:50%;top:52%;translate:-50% -50%;width:74vmax;
+    opacity:.10;filter:blur(6px);pointer-events:none;
+  }
+  #grain{position:fixed;inset:0;pointer-events:none;opacity:.5;z-index:3;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  /* ---------- court + game canvas ---------- */
+  #court{position:fixed;inset:0;z-index:4;}
+  #game{position:fixed;inset:0;z-index:5;}
+
+  /* labels + scores */
+  .sideLbl{
+    position:fixed;z-index:6;font-size:11px;letter-spacing:3px;font-weight:700;
+    color:rgba(226,240,250,.85);pointer-events:none;transition:opacity .3s;
+  }
+  body.hasOv .sideLbl{opacity:0;}
+  #lblYou{bottom:3.2%;left:41%;}
+  #lblOpp{top:3.2%;left:56%;}
+  .score{
+    position:fixed;z-index:4;font-size:min(17vmin,150px);line-height:1;
+    color:rgba(255,255,255,.34);pointer-events:none;font-weight:400;
+    text-shadow:0 2px 30px rgba(0,25,101,.2);
+  }
+  #scoreOpp{top:12%;right:12%;}
+  #scoreYou{bottom:12%;left:12%;}
+
+  /* header */
+  header{position:fixed;top:14px;left:0;right:0;z-index:6;text-align:center;pointer-events:none;}
+  header img{width:74px;opacity:.95;}
+
+  /* ---------- overlays ---------- */
+  .ov{
+    position:fixed;inset:0;z-index:20;display:none;
+    align-items:center;justify-content:center;flex-direction:column;text-align:center;
+    padding:24px;
+  }
+  .ov.on{display:flex;}
+  .ovTitle{font-size:min(13vw,68px);line-height:1.05;font-weight:400;
+    text-shadow:0 4px 40px rgba(0,25,101,.4);}
+  .ovSub{font-size:14px;font-weight:600;color:rgba(226,240,250,.95);margin-top:16px;max-width:340px;line-height:1.55;}
+  .pill{
+    margin-top:26px;background:#fff;color:var(--blue);border:none;border-radius:50px;
+    padding:14px 44px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:800;letter-spacing:2px;
+    box-shadow:0 8px 30px rgba(0,17,63,.35);pointer-events:auto;
+  }
+  .pill:active{transform:scale(.97);}
+  .ovFoot{position:absolute;bottom:26px;left:0;right:0;font-size:10px;letter-spacing:2.2px;font-weight:700;color:rgba(226,240,250,.8);line-height:1.7;}
+  .ovFoot b{color:#fff;}
+  #vsRow{display:flex;align-items:center;gap:26px;margin-top:6px;}
+  #vsRow .who{font-size:min(9vw,46px);}
+  #vsRow .vs{font-size:15px;color:rgba(226,240,250,.7);}
+
+  /* point flash */
+  #flash{
+    position:fixed;left:50%;top:38%;translate:-50% -50%;z-index:18;display:none;
+    text-align:center;pointer-events:none;
+    animation:flashIn 1.5s ease-out forwards;
+  }
+  @keyframes flashIn{
+    0%{opacity:0;transform:scale(.85);}
+    15%,72%{opacity:1;transform:scale(1);}
+    100%{opacity:0;transform:scale(1.04);}
+  }
+  #flashScore{font-size:min(16vw,84px);line-height:1;}
+  #flashLine{font-size:13px;font-weight:600;color:rgba(226,240,250,.95);margin-top:10px;}
+  #matchPt{
+    position:fixed;top:10.2%;left:50%;translate:-50% 0;z-index:6;display:none;
+    font-size:11px;letter-spacing:3px;font-weight:800;color:#FF9AD1;
+  }
+</style>
+</head>
+<body class="hasOv">
+
+<div id="back">
+  <div class="blob blobA"></div>
+  <div class="blob blobB"></div>
+  <div class="blob blobC"></div>
+  <img id="backBull" src="assets/novo-bull-solo-white.png" alt="">
+</div>
+<canvas id="court"></canvas>
+<canvas id="game"></canvas>
+<div id="grain"></div>
+
+<header><img src="assets/novo-logo-white.png" alt="Novo Nordisk"></header>
+<div class="sideLbl" id="lblOpp">BOREDOM</div>
+<div class="sideLbl" id="lblYou">YOU</div>
+<div class="score serif" id="scoreOpp">00</div>
+<div class="score serif" id="scoreYou">00</div>
+<div id="matchPt">MATCH POINT</div>
+
+<div class="ov on" id="ovTitle">
+  <div class="ovTitle serif">The Queue<br>Break!</div>
+  <div class="ovSub">A little tennis while you wait. Beat Boredom before the queue moves.</div>
+  <button class="pill" id="btnStart">◍ &nbsp;START</button>
+  <div class="ovFoot">NOVO NORDISK · GAMESCOM 2026</div>
+</div>
+
+<div class="ov" id="ovVs">
+  <div id="vsRow"><span class="who serif">You</span><span class="vs serif">vs</span><span class="who serif">Boredom</span></div>
+  <div class="ovSub">Boredom returns everything. At first.</div>
+  <button class="pill" id="btnVs">NEXT →</button>
+</div>
+
+<div class="ov" id="ovHow">
+  <div class="ovTitle serif" style="font-size:min(9vw,46px);">Score 7 points<br>to win</div>
+  <div class="ovSub">Drag anywhere to move your racket. The rally gets faster the longer you hold on.</div>
+  <button class="pill" id="btnHow">PLAY</button>
+</div>
+
+<div class="ov" id="ovEnd">
+  <div class="ovTitle serif" id="endTitle"></div>
+  <div class="ovSub" id="endSub"></div>
+  <button class="pill" id="btnAgain">PLAY AGAIN</button>
+  <div class="ovFoot">SOME THINGS ARE WORTH THE WAIT.<br><b>YOUR HEALTH ISN&rsquo;T.</b></div>
+</div>
+
+<div id="flash"><div id="flashScore" class="serif"></div><div id="flashLine"></div></div>
+
+<script>
+(() => {
+'use strict';
+
+const SAVE_KEY='novo-queuebreak-v1';
+const qp=new URLSearchParams(location.search);
+const WIN_AT=qp.has('demo')?2:7;
+const LINES_WIN=[
+  'Point, you. Boredom looks rattled.',
+  'Clean winner. The queue applauds quietly.',
+  'Boredom did not see that coming.',
+  'Your health thanks you for the footwork.',
+];
+const LINES_LOSE=[
+  'Boredom sneaks one in. Shake it off.',
+  'Deep breath. Reset. Go again.',
+  'Boredom is patient. Be faster.',
+  'Stretch those wrists. Next point is yours.',
+];
+
+let S={wins:0,losses:0,bestRally:0};
+try{const r=localStorage.getItem(SAVE_KEY); if(r){const p=JSON.parse(r); if(p&&typeof p.wins==='number') S=Object.assign(S,p);}}catch(e){}
+
+const $=id=>document.getElementById(id);
+const courtCv=$('court'), gameCv=$('game');
+const cc=courtCv.getContext('2d'), gc=gameCv.getContext('2d');
+
+let W=0,H=0,DPR=1;
+let court={l:0,r:0,t:0,b:0,midY:0};
+function layout(){
+  DPR=Math.min(devicePixelRatio||1,2);
+  W=innerWidth; H=innerHeight;
+  if(W<100||H<100){ W=Math.max(W,360); H=Math.max(H,640); }  // hidden/booting viewport guard
+  [courtCv,gameCv].forEach(c=>{c.width=W*DPR;c.height=H*DPR;c.style.width=W+'px';c.style.height=H+'px';});
+  cc.setTransform(DPR,0,0,DPR,0,0); gc.setTransform(DPR,0,0,DPR,0,0);
+  const portrait=H>W;
+  const margX=portrait?W*0.07:W*0.24;
+  court={l:margX, r:W-margX, t:H*0.115, b:H*0.885};
+  court.midY=(court.t+court.b)/2;
+  drawCourt();
+}
+function drawCourt(){
+  cc.clearRect(0,0,W,H);
+  cc.strokeStyle='rgba(226,240,250,.8)';
+  cc.lineWidth=1.2;
+  const {l,r,t,b,midY}=court;
+  const w=r-l;
+  // outer sidelines (full height) + baselines
+  cc.strokeRect(l,t,w,b-t);
+  // net (center) — brighter, slight glow
+  cc.save();
+  cc.strokeStyle='rgba(255,255,255,.9)';
+  cc.shadowColor='rgba(255,255,255,.6)'; cc.shadowBlur=6;
+  cc.beginPath(); cc.moveTo(l-14,midY); cc.lineTo(r+14,midY); cc.stroke();
+  cc.restore();
+  // service lines + center service line
+  const sTop=t+(midY-t)*0.52, sBot=b-(b-midY)*0.52;
+  cc.beginPath();
+  cc.moveTo(l,sTop); cc.lineTo(r,sTop);
+  cc.moveTo(l,sBot); cc.lineTo(r,sBot);
+  cc.moveTo((l+r)/2,sTop); cc.lineTo((l+r)/2,sBot);
+  cc.stroke();
+  // center marks on baselines
+  cc.beginPath();
+  cc.moveTo((l+r)/2,t); cc.lineTo((l+r)/2,t+10);
+  cc.moveTo((l+r)/2,b-10); cc.lineTo((l+r)/2,b);
+  cc.stroke();
+}
+addEventListener('resize',layout);
+
+/* ---------- audio ---------- */
+let AC=null;
+function tone(f,dur=0.07,g=0.08,type='sine'){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),gn=AC.createGain();
+    o.type=type;o.frequency.value=f;
+    gn.gain.setValueAtTime(g,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+    o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+/* ---------- game state ---------- */
+let mode='title';  // title|vs|how|play|point|end
+let scoreY=0, scoreO=0, rally=0;
+let ball={x:0,y:0,vx:0,vy:0,r:9,trail:[]};
+let you={x:0,w:0}, opp={x:0,w:0,err:0};
+const PW=()=>Math.max(64,(court.r-court.l)*0.16);
+
+function serve(toYou){
+  rally=0;
+  ball.x=(court.l+court.r)/2;
+  ball.y=court.midY;
+  const sp=Math.max(H*0.42,340);
+  const a=(Math.random()*0.5-0.25);
+  ball.vx=Math.sin(a)*sp;
+  ball.vy=(toYou?1:-1)*Math.cos(a)*sp;
+  ball.trail=[];
+  aimAI();
+}
+/* Boredom is good, not perfect: sometimes it commits to a doomed position,
+   and it tires as the rally grows. */
+function aimAI(){
+  const pw=PW();
+  const missP=0.04 + rally*0.03 + (scoreO>scoreY?0.05:0);
+  if(Math.random()<missP) opp.err=(Math.random()<0.5?-1:1)*(0.75+Math.random()*0.5)*pw;
+  else opp.err=(Math.random()*0.6-0.3)*pw;
+}
+function resetMatch(){
+  scoreY=0; scoreO=0; paintScore();
+  you.x=(court.l+court.r)/2; opp.x=(court.l+court.r)/2;
+  serve(Math.random()<0.5);
+}
+
+function paintScore(){
+  $('scoreYou').textContent=String(scoreY).padStart(2,'0');
+  $('scoreOpp').textContent=String(scoreO).padStart(2,'0');
+  $('matchPt').style.display=(scoreY===WIN_AT-1||scoreO===WIN_AT-1)?'block':'none';
+}
+
+/* ---------- input ---------- */
+let targetX=null;
+function onPoint(e){
+  const x=e.touches?e.touches[0].clientX:e.clientX;
+  targetX=x;
+}
+addEventListener('pointerdown',onPoint);
+addEventListener('pointermove',onPoint);
+
+/* ---------- overlay flow ---------- */
+function show(id){
+  ['ovTitle','ovVs','ovHow','ovEnd'].forEach(o=>$(o).classList.remove('on'));
+  if(id) $(id).classList.add('on');
+  document.body.classList.toggle('hasOv', !!id);
+}
+$('btnStart').addEventListener('click',()=>{tone(660,.08,.09);show('ovVs');mode='vs';});
+$('btnVs').addEventListener('click',()=>{tone(660,.08,.09);show('ovHow');mode='how';});
+$('btnHow').addEventListener('click',()=>{tone(880,.1,.1);show(null);layout();resetMatch();mode='play';});
+$('btnAgain').addEventListener('click',()=>{tone(880,.1,.1);show(null);layout();resetMatch();mode='play';});
+
+/* ---------- point / match end ---------- */
+function pointDone(youWon){
+  mode='point';
+  if(youWon) scoreY++; else scoreO++;
+  paintScore();
+  S.bestRally=Math.max(S.bestRally,rally);
+  tone(youWon?880:240,.14,.12,youWon?'sine':'triangle');
+  if(scoreY>=WIN_AT||scoreO>=WIN_AT){ matchEnd(scoreY>WIN_AT-1); return; }
+  const f=$('flash');
+  $('flashScore').textContent=scoreY+' — '+scoreO;
+  const pool=youWon?LINES_WIN:LINES_LOSE;
+  $('flashLine').textContent=pool[Math.floor(Math.random()*pool.length)];
+  f.style.display='block';
+  f.style.animation='none'; void f.offsetWidth; f.style.animation='';
+  setTimeout(()=>{f.style.display='none'; if(mode==='point'){serve(!youWon); mode='play';}},1500);
+}
+function matchEnd(won){
+  mode='end';
+  if(won){S.wins++;}else{S.losses++;}
+  save();
+  $('endTitle').innerHTML=won?'Boredom:<br>broken.':'Boredom took<br>this one.';
+  $('endSub').textContent=(won?'You won the queue break '+scoreY+'–'+scoreO+'. ':'It ends '+scoreY+'–'+scoreO+'. ')
+    +'Longest rally: '+S.bestRally+' hits. Record: '+S.wins+'W–'+S.losses+'L.';
+  if(won){tone(660,.12,.12);setTimeout(()=>tone(880,.12,.12),130);setTimeout(()=>tone(1320,.2,.12),270);}
+  else{tone(300,.2,.1,'triangle');}
+  setTimeout(()=>show('ovEnd'),650);
+}
+function save(){
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));}catch(e){}
+}
+
+/* ---------- physics ---------- */
+function step(dt){
+  const {l,r,t,b}=court;
+  const pw=PW();
+  you.w=pw; opp.w=pw;
+  // your racket follows pointer
+  if(targetX!==null){
+    const tx=Math.min(Math.max(targetX,l+pw/2),r-pw/2);
+    you.x+=(tx-you.x)*Math.min(1,dt*18);
+  }
+  // AI: tracks ball when incoming, drifts center otherwise; rubber-band speed
+  const lead=scoreO-scoreY;
+  const aiSp=(H*0.55)*(1+(lead<0?0.08:-0.04*lead));
+  const aiTarget=ball.vy<0? ball.x+opp.err : (l+r)/2;
+  const dx=aiTarget-opp.x;
+  opp.x+=Math.sign(dx)*Math.min(Math.abs(dx),aiSp*dt);
+  opp.x=Math.min(Math.max(opp.x,l+pw/2),r-pw/2);
+
+  // ball
+  ball.trail.push({x:ball.x,y:ball.y});
+  if(ball.trail.length>9) ball.trail.shift();
+  ball.x+=ball.vx*dt;
+  ball.y+=ball.vy*dt;
+  // side walls
+  if(ball.x<l+ball.r){ball.x=l+ball.r;ball.vx=Math.abs(ball.vx);tone(300,.03,.04);}
+  if(ball.x>r-ball.r){ball.x=r-ball.r;ball.vx=-Math.abs(ball.vx);tone(300,.03,.04);}
+  // rackets sit just inside baselines
+  const yYou=b-14, yOpp=t+14;
+  if(ball.vy>0 && ball.y+ball.r>=yYou-5 && ball.y+ball.r<=yYou+26){
+    if(Math.abs(ball.x-you.x)<=pw/2+ball.r){
+      const rel=(ball.x-you.x)/(pw/2);
+      hit(rel,-1);
+    }
+  }
+  if(ball.vy<0 && ball.y-ball.r<=yOpp+5 && ball.y-ball.r>=yOpp-26){
+    if(Math.abs(ball.x-opp.x)<=pw/2+ball.r){
+      const rel=(ball.x-opp.x)/(pw/2);
+      hit(rel,1);
+      aimAI();
+    }
+  }
+  // scored?
+  if(ball.y<t-30) pointDone(true);
+  else if(ball.y>b+30) pointDone(false);
+}
+function hit(rel,dir){
+  rally++;
+  const sp=Math.hypot(ball.vx,ball.vy)*1.045;
+  const maxA=1.05;
+  const a=rel*maxA + (Math.random()*0.12-0.06);  // jitter breaks degenerate loops
+  ball.vx=Math.sin(a)*sp;
+  ball.vy=dir*Math.cos(a)*sp;
+  tone(480+Math.random()*120+rally*8,.05,.08);
+  if(navigator.vibrate) navigator.vibrate(5);
+}
+
+/* ---------- render ---------- */
+function render(){
+  gc.clearRect(0,0,W,H);
+  if(mode!=='play'&&mode!=='point') return;
+  const {t,b}=court;
+  const pw=PW();
+  // trail
+  ball.trail.forEach((p,i)=>{
+    const a=(i+1)/ball.trail.length*0.25;
+    gc.globalAlpha=a;
+    gc.fillStyle='#fff';
+    gc.beginPath();gc.arc(p.x,p.y,ball.r*(0.5+i/ball.trail.length*0.5),0,7);gc.fill();
+  });
+  gc.globalAlpha=1;
+  // ball shadow
+  gc.fillStyle='rgba(0,25,101,.28)';
+  gc.beginPath();gc.ellipse(ball.x+5,ball.y+9,ball.r*0.9,ball.r*0.45,0,0,7);gc.fill();
+  // ball (little orb)
+  const grad=gc.createRadialGradient(ball.x-3,ball.y-3,1,ball.x,ball.y,ball.r);
+  grad.addColorStop(0,'#fff'); grad.addColorStop(.65,'#EAF4FC'); grad.addColorStop(1,'#B1D5F2');
+  gc.fillStyle=grad;
+  gc.beginPath();gc.arc(ball.x,ball.y,ball.r,0,7);gc.fill();
+  // rackets
+  const yYou=b-14, yOpp=t+14;
+  gc.lineCap='round';
+  gc.strokeStyle='#fff'; gc.lineWidth=7;
+  gc.shadowColor='rgba(255,255,255,.5)'; gc.shadowBlur=10;
+  gc.beginPath();gc.moveTo(you.x-pw/2,yYou);gc.lineTo(you.x+pw/2,yYou);gc.stroke();
+  gc.shadowBlur=0;
+  gc.strokeStyle='rgba(138,147,161,.95)';
+  gc.beginPath();gc.moveTo(opp.x-pw/2,yOpp);gc.lineTo(opp.x+pw/2,yOpp);gc.stroke();
+}
+
+/* ---------- loop ---------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min((now-last)/1000,0.033); last=now;
+  if(mode==='play') step(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+addEventListener('visibilitychange',()=>{ last=performance.now(); });
+
+layout();
+paintScore();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

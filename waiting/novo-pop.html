@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORB POP — The Waiting Game</title>
+<style>
+  :root{
+    --blue:#001965; --blue2:#00113F; --lblue:#3B97DE; --tint1:#E2F0FA; --tint2:#B1D5F2;
+    --magenta:#C6007E; --white:#fff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.02) 0 3px, transparent 3px 46px),
+      linear-gradient(180deg,#002B7A 0%, var(--blue) 45%, #000E38 100%);
+    color:var(--white);overflow:hidden;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;
+    display:flex;flex-direction:column;align-items:center;
+  }
+
+  header{width:100%;max-width:480px;padding:14px 18px 2px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .hTitle{font-size:16px;font-weight:800;letter-spacing:3px;}
+  .hSub{font-size:10.5px;letter-spacing:2px;color:var(--tint2);margin-top:3px;font-weight:600;}
+  .hRight{text-align:right;font-size:11px;color:var(--tint2);font-weight:600;}
+  .hRight b{color:#fff;font-size:14px;font-variant-numeric:tabular-nums;}
+
+  #score{
+    font-size:40px;font-weight:800;line-height:1;text-align:center;margin-top:2px;
+    text-shadow:0 0 26px rgba(59,151,222,.6);font-variant-numeric:tabular-nums;
+  }
+  .scoreLbl{font-size:10px;letter-spacing:3px;color:var(--lblue);text-align:center;font-weight:700;margin-top:3px;}
+  #ticker{
+    margin-top:6px;font-size:11.5px;font-style:italic;font-weight:600;color:var(--tint2);
+    text-align:center;padding:0 20px;transition:opacity .4s;min-height:15px;
+  }
+
+  /* ---------- the field ---------- */
+  #field{flex:1;width:100%;position:relative;overflow:hidden;min-height:0;}
+  .bub{
+    position:absolute;border-radius:50%;cursor:pointer;
+    background:radial-gradient(circle at 34% 30%, #9FD0F5 0%, var(--lblue) 45%, #1565B8 80%, #0C3F86 100%);
+    box-shadow:0 0 14px rgba(59,151,222,.5), inset 0 -5px 12px rgba(0,25,101,.5), inset 0 4px 10px rgba(255,255,255,.4);
+    animation:sway 3.4s ease-in-out infinite;
+  }
+  .bub.big{
+    background:radial-gradient(circle at 34% 30%, #D9EDFC 0%, #7FC0F0 45%, var(--lblue) 80%, #1565B8 100%);
+    box-shadow:0 0 22px rgba(127,192,240,.85), inset 0 -5px 12px rgba(0,25,101,.4), inset 0 4px 10px rgba(255,255,255,.55);
+  }
+  .bub.mag{
+    background:radial-gradient(circle at 34% 30%, #FFD7EE 0%, var(--magenta) 55%, #7D0050 100%);
+    box-shadow:0 0 22px rgba(198,0,126,.85), inset 0 -5px 12px rgba(60,0,35,.5), inset 0 4px 10px rgba(255,255,255,.45);
+  }
+  @keyframes sway{0%,100%{margin-left:0;}50%{margin-left:22px;}}
+  .bub.popping{animation:popOut .16s ease-out forwards;}
+  @keyframes popOut{to{transform:scale(1.55);opacity:0;}}
+  .floatUp{
+    position:absolute;font-weight:800;font-size:19px;color:#fff;pointer-events:none;z-index:30;
+    text-shadow:0 2px 8px rgba(0,25,101,.9);
+    animation:riseUp 1s ease-out forwards;
+  }
+  .floatUp.mag{color:#FF9AD1;}
+  @keyframes riseUp{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-52px);}}
+
+  /* auto-popper bot */
+  #bot{
+    position:absolute;font-size:30px;z-index:20;pointer-events:none;display:none;
+    filter:drop-shadow(0 0 10px rgba(177,213,242,.7));
+    transition:left .3s ease, top .3s ease;
+  }
+
+  /* ---------- shop ---------- */
+  #shop{width:100%;max-width:480px;padding:6px 12px calc(12px + env(safe-area-inset-bottom));display:flex;gap:8px;}
+  .card{
+    flex:1;background:rgba(255,255,255,.07);
+    border:1.5px solid rgba(177,213,242,.28);border-radius:16px;
+    padding:9px 10px;cursor:pointer;text-align:center;
+    transition:transform .08s;
+  }
+  .card:active{transform:scale(.96);}
+  .card.can{background:rgba(59,151,222,.22);border-color:var(--lblue);}
+  .card.max{opacity:.4;}
+  .cIcon{font-size:20px;}
+  .cName{font-size:10px;font-weight:800;letter-spacing:1px;margin-top:2px;color:var(--tint2);}
+  .cVal{font-size:11.5px;font-weight:700;margin-top:1px;}
+  .cCost{
+    display:inline-block;margin-top:5px;font-size:10.5px;font-weight:800;
+    background:#fff;color:var(--blue);border-radius:50px;padding:2px 10px;
+  }
+
+  #banner{
+    position:fixed;left:50%;top:20%;translate:-50% 0;z-index:55;display:none;
+    font-size:23px;font-weight:800;text-align:center;pointer-events:none;color:#fff;
+    text-shadow:0 2px 14px rgba(0,25,101,.95);width:90%;
+    animation:bannerUp 3.2s ease-out forwards;
+  }
+  @keyframes bannerUp{
+    0%{opacity:0;transform:translateY(10px);}
+    8%,75%{opacity:1;transform:translateY(0);}
+    100%{opacity:0;transform:translateY(-26px);}
+  }
+  #banner .mag{color:#FF9AD1;}
+  #banner .sub{font-size:13px;font-weight:600;}
+  .logo{position:fixed;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));width:76px;opacity:.9;pointer-events:none;z-index:2;}
+  @media (max-width:660px){ .logo{display:none;} }
+  @media (prefers-reduced-motion:reduce){ .bub{animation:none;} }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="hTitle">ORB POP</div>
+      <div class="hSub">SEE ORB. POP ORB.</div>
+    </div>
+    <div class="hRight"><b id="popped">0</b> popped<br><span id="rate">0</span>/sec auto</div>
+  </header>
+  <div id="score">0</div>
+  <div class="scoreLbl">POINTS</div>
+  <div id="ticker">Pop the blue ones. Pop the bright ones harder.</div>
+
+  <div id="field"><div id="bot">&#x1F916;</div></div>
+
+  <div id="shop">
+    <div class="card" id="c-auto"><div class="cIcon">&#x1F916;</div><div class="cName">AUTO-POPPER</div><div class="cVal" id="v-auto"></div><span class="cCost" id="k-auto"></span></div>
+    <div class="card" id="c-spawn"><div class="cIcon">&#x1FAE7;</div><div class="cName">MORE ORBS</div><div class="cVal" id="v-spawn"></div><span class="cCost" id="k-spawn"></span></div>
+    <div class="card" id="c-val"><div class="cIcon">&#x2728;</div><div class="cName">ORB VALUE</div><div class="cVal" id="v-val"></div><span class="cCost" id="k-val"></span></div>
+  </div>
+
+  <div id="banner"></div>
+  <img class="logo" src="assets/novo-logo-white.png" alt="Novo Nordisk">
+
+<script>
+(() => {
+'use strict';
+
+const SAVE_KEY='novo-pop-v1';
+const LINES=[
+  'Pop the blue ones. Pop the bright ones harder.',
+  'The magenta orb is worth 25. Just saying.',
+  'Hire the auto-popper. It never gets bored.',
+  "Some things are worth the wait. Your health isn't.",
+  'Missed one? It floats away. No harm done.',
+  'Numbers go up. That is the whole idea.',
+];
+
+let S={score:0, popped:0, auto:-1, spawn:0, val:0, seen:0};
+// auto: -1 = no bot, 0+ = bot level
+try{
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(raw){const p=JSON.parse(raw); if(p&&typeof p.score==='number') S=Object.assign(S,p);}
+}catch(e){}
+
+const MAXBUBS=12;
+const mult=()=>Math.pow(2,S.val);
+const spawnInt=()=>1.5*Math.pow(0.85,S.spawn);
+const autoInt=()=>S.auto<0?Infinity:3*Math.pow(0.85,S.auto);
+const AVG=1*0.85+5*0.12+25*0.03;                 // average base value of a bubble
+const autoRate=()=>S.auto<0?0:AVG*mult()/autoInt();
+
+const UPS={
+  auto: {max:12, cost:n=>Math.ceil(50*Math.pow(2.5,n+1)/2.5),  val:()=>S.auto<0?'not hired':'pops every '+autoInt().toFixed(1)+'s'},
+  spawn:{max:10, cost:n=>Math.ceil(30*Math.pow(2.2,n)),  val:()=>'every '+spawnInt().toFixed(1)+'s'},
+  val:  {max:12, cost:n=>Math.ceil(100*Math.pow(6,n)),   val:()=>'×'+mult()},
+};
+
+const fmt=n=>{
+  n=Math.floor(n);
+  const T=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e4,'K']];
+  for(const [v,s] of T) if(n>=v) return (Math.floor(n/(v/10))/10).toLocaleString('en-US')+s;
+  return n.toLocaleString('en-US');
+};
+
+/* ---------- audio ---------- */
+let AC=null;
+function beep(f,dur=0.05,g=0.08,type='sine'){
+  try{
+    if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),gn=AC.createGain();
+    o.type=type;o.frequency.value=f;
+    gn.gain.setValueAtTime(g,AC.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+dur);
+    o.connect(gn);gn.connect(AC.destination);o.start();o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+/* ---------- bubbles ---------- */
+const $=id=>document.getElementById(id);
+const field=$('field'), bot=$('bot');
+let bubs=[];   // {el, value, mag}
+
+function spawnBub(){
+  if(bubs.length>=MAXBUBS) return;
+  const r=Math.random();
+  const mag=r<0.03, big=!mag&&r<0.15;
+  const value=mag?25:big?5:1;
+  const size=mag?56:big?70:(48+Math.random()*22);
+  const el=document.createElement('div');
+  el.className='bub'+(mag?' mag':big?' big':'');
+  el.style.width=size+'px'; el.style.height=size+'px';
+  el.style.left=(5+Math.random()*80)+'%';
+  el.style.bottom=(-size-10)+'px';
+  el.style.animationDelay=(Math.random()*3)+'s';
+  field.appendChild(el);
+  const b={el,value,mag,popped:false};
+  bubs.push(b);
+  el.addEventListener('pointerdown',e=>{e.preventDefault();pop(b,true);});
+  // float up over ~9s via transition (forced reflow so it runs even without rAF)
+  const rise=Math.max(field.clientHeight,300)+size+40;
+  void el.offsetWidth;
+  el.style.transition='bottom 9s linear';
+  el.style.bottom=rise+'px';
+  b.timer=setTimeout(()=>{ despawn(b); },9300);
+}
+function despawn(b){
+  if(b.popped) return;
+  b.popped=true; clearTimeout(b.timer);
+  b.el.remove();
+  bubs=bubs.filter(x=>x!==b);
+}
+function pop(b,manual){
+  if(b.popped) return;
+  b.popped=true; clearTimeout(b.timer);
+  bubs=bubs.filter(x=>x!==b);
+  const gain=b.value*mult();
+  S.score+=gain; S.popped++;
+  const r=b.el.getBoundingClientRect(), fr=field.getBoundingClientRect();
+  const f=document.createElement('div');
+  f.className='floatUp'+(b.mag?' mag':''); f.textContent='+'+fmt(gain);
+  f.style.left=(r.left-fr.left+r.width/4)+'px';
+  f.style.top=(r.top-fr.top)+'px';
+  field.appendChild(f); setTimeout(()=>f.remove(),1000);
+  b.el.classList.add('popping');
+  b.el.style.pointerEvents='none';
+  setTimeout(()=>b.el.remove(),170);
+  beep(b.mag?880:520+Math.random()*120,.05,manual?0.09:0.05);
+  if(manual&&navigator.vibrate) navigator.vibrate(b.mag?[10,30,10]:6);
+  paint();
+}
+
+/* ---------- auto-popper ---------- */
+function autoPop(){
+  if(!bubs.length) return;
+  const b=bubs[0]; // oldest
+  const r=b.el.getBoundingClientRect(), fr=field.getBoundingClientRect();
+  bot.style.display='block';
+  bot.style.left=(r.left-fr.left+r.width/2-15)+'px';
+  bot.style.top=(r.top-fr.top+r.height/2-15)+'px';
+  setTimeout(()=>{ if(!b.popped) pop(b,false); },300);
+}
+
+/* ---------- shop ---------- */
+function buy(k){
+  const u=UPS[k];
+  const lvl=k==='auto'?S.auto+1:S[k];
+  if(lvl>=u.max+(k==='auto'?1:0)){ return; }
+  const c=u.cost(k==='auto'?S.auto+1:S[k]);
+  if(S.score<c){ beep(150,.08,.06,'square'); return; }
+  S.score-=c;
+  if(k==='auto'){ S.auto++;
+    if(S.auto===0) showBanner('AUTO-POPPER HIRED!<br><span class="sub">It pops while you wait. You can still out-pop it.</span>');
+  }else S[k]++;
+  beep(740,.07,.1); setTimeout(()=>beep(1050,.09,.1),70);
+  paint(); save();
+}
+$('c-auto').addEventListener('click',()=>buy('auto'));
+$('c-spawn').addEventListener('click',()=>buy('spawn'));
+$('c-val').addEventListener('click',()=>buy('val'));
+
+/* ---------- banner ---------- */
+let bannerTimer=0;
+function showBanner(html){
+  const b=$('banner');
+  b.innerHTML=html; b.style.display='block';
+  b.style.animation='none'; void b.offsetWidth; b.style.animation='';
+  clearTimeout(bannerTimer);
+  bannerTimer=setTimeout(()=>{b.style.display='none';},3100);
+}
+
+/* ---------- paint ---------- */
+function paint(){
+  $('score').textContent=fmt(S.score);
+  $('popped').textContent=fmt(S.popped);
+  const r=autoRate();
+  $('rate').textContent=r<100?String(Math.round(r*10)/10):fmt(r);
+  const autoCost=UPS.auto.cost(S.auto+1);
+  $('v-auto').textContent=UPS.auto.val();
+  $('k-auto').textContent=S.auto+1>UPS.auto.max?'MAX':fmt(autoCost)+(S.auto<0?' · HIRE':'');
+  $('c-auto').classList.toggle('can',S.auto+1<=UPS.auto.max&&S.score>=autoCost);
+  $('c-auto').classList.toggle('max',S.auto+1>UPS.auto.max);
+  ['spawn','val'].forEach(k=>{
+    const u=UPS[k];
+    $('v-'+k).textContent=u.val();
+    $('k-'+k).textContent=S[k]>=u.max?'MAX':fmt(u.cost(S[k]));
+    $('c-'+k).classList.toggle('can',S[k]<u.max&&S.score>=u.cost(S[k]));
+    $('c-'+k).classList.toggle('max',S[k]>=u.max);
+  });
+}
+
+/* ---------- ticker ---------- */
+let lineI=0;
+setInterval(()=>{
+  const el=$('ticker');
+  el.style.opacity=0;
+  setTimeout(()=>{ lineI=(lineI+1)%LINES.length; el.textContent=LINES[lineI]; el.style.opacity=1; },400);
+},9000);
+
+/* ---------- main logic (wall-clock) ---------- */
+let lastT=Date.now(), spawnAcc=1.4, autoAcc=0;
+setInterval(()=>{
+  const now=Date.now();
+  let dt=(now-lastT)/1000; lastT=now;
+  if(dt<=0) return;
+  if(dt>3){ // background catch-up: bot income only
+    dt=Math.min(dt,2*3600);
+    if(S.auto>=0){
+      const pops=Math.floor(dt/autoInt());
+      S.score+=pops*AVG*mult(); S.popped+=pops;
+    }
+    return;
+  }
+  spawnAcc+=dt;
+  while(spawnAcc>=spawnInt()){ spawnAcc-=spawnInt(); spawnBub(); }
+  if(S.auto>=0){
+    autoAcc+=dt;
+    if(autoAcc>=autoInt()){ autoAcc=0; autoPop(); }
+  }
+},250);
+setInterval(()=>paint(),1000);
+
+/* offline earnings */
+if(S.seen && S.auto>=0){
+  const away=Math.min((Date.now()-S.seen)/1000,2*3600);
+  const pops=Math.floor(away/autoInt());
+  if(pops>0 && away>60){
+    const gain=pops*AVG*mult();
+    S.score+=gain; S.popped+=pops;
+    setTimeout(()=>showBanner('Welcome back!<br><span class="sub">Your auto-popper popped '+fmt(pops)+' orbs: +'+fmt(gain)+' points</span>'),600);
+  }
+}
+
+setInterval(save,5000);
+function save(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({score:S.score,popped:S.popped,auto:S.auto,spawn:S.spawn,val:S.val,seen:Date.now()})); }catch(e){}
+}
+addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+
+/* pre-seed: three bubbles on screen immediately */
+spawnBub(); setTimeout(spawnBub,350); setTimeout(spawnBub,700);
+paint();
+})();
+</script>
+</body>
+</html>

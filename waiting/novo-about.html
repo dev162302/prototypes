@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="About The Waiting — a Novo Nordisk campaign at Gamescom 2026. One tap. One ripple.">
+<meta name="theme-color" content="#1B6BDC">
+<title>About the campaign — The Waiting</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='white' stroke-width='6'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#1B6BDC; --bg2:#1257BE; --blue:#001965; --tint:#B1D5F2; --magenta:#C6007E;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html{scroll-behavior:smooth;}
+  body{
+    min-height:100vh;
+    font-family:'Apis','Source Sans 3','Segoe UI',system-ui,sans-serif;
+    background:radial-gradient(120% 120% at 50% 42%, var(--bg) 0%, #1660CC 55%, var(--bg2) 100%) fixed;
+    color:#fff;
+  }
+  a{color:inherit;}
+  img{max-width:100%;}
+  :focus-visible{outline:3px solid #fff;outline-offset:3px;border-radius:6px;}
+
+  /* ---------- ambient game-world layer ---------- */
+  #bgfx{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+  .standing{
+    position:absolute;left:50%;top:38%;translate:-50% -50%;
+    border-radius:50%;
+    background:radial-gradient(closest-side, rgba(255,255,255,var(--o,.05)) 0 97.5%, rgba(255,255,255,0) 100%);
+    animation:standPulse 8s ease-in-out infinite;
+  }
+  @keyframes standPulse{0%,100%{opacity:.8;}50%{opacity:1;}}
+  #ghostBull{
+    position:absolute;right:-12vmin;bottom:-8vmin;width:64vmin;opacity:.10;
+  }
+
+  main{position:relative;z-index:1;}
+
+  /* ---------- language toggle ---------- */
+  .lang{
+    position:fixed;top:14px;right:14px;z-index:30;
+    display:flex;gap:2px;padding:3px;border-radius:50px;
+    background:rgba(255,255,255,.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  }
+  .lang button{
+    border:none;background:transparent;color:#fff;cursor:pointer;
+    font-family:inherit;font-size:11px;font-weight:800;letter-spacing:1.5px;
+    padding:7px 13px;border-radius:50px;transition:background .2s,color .2s;
+  }
+  .lang button[aria-pressed="true"]{background:#fff;color:var(--blue);}
+
+  /* ---------- shared editorial bits ---------- */
+  .eyebrow{
+    font-size:10px;letter-spacing:3px;font-weight:700;
+    color:rgba(255,255,255,.75);text-transform:uppercase;
+  }
+  .card .eyebrow{color:var(--magenta);}
+  .chip{
+    display:inline-block;margin-left:10px;vertical-align:2px;
+    font-size:8.5px;letter-spacing:1.5px;font-weight:800;
+    background:var(--magenta);color:#fff;border-radius:50px;padding:3px 10px;
+    white-space:nowrap;
+  }
+  .placeholder{
+    margin-top:16px;padding:16px 18px;border:2px dashed rgba(255,255,255,.5);
+    border-radius:14px;font-size:13px;font-weight:600;font-style:italic;
+    color:rgba(255,255,255,.85);line-height:1.6;
+  }
+  .card .placeholder{border-color:rgba(0,25,101,.35);color:#66759E;}
+
+  .btn{
+    display:inline-block;background:#fff;color:var(--blue);text-decoration:none;
+    border-radius:50px;padding:15px 36px;
+    font-size:13px;font-weight:800;letter-spacing:2px;
+    box-shadow:0 10px 34px rgba(0,17,63,.35);
+    transition:transform .15s ease;
+  }
+  .btn:active{transform:scale(.96);}
+  @media (hover:hover){.btn:hover{transform:translateY(-2px);}}
+
+  /* ---------- hero ---------- */
+  #hero{
+    min-height:88vh;min-height:88svh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:84px 26px 40px;position:relative;
+  }
+  #hero h1{
+    font-size:clamp(58px,17vw,110px);font-weight:800;line-height:.98;
+    letter-spacing:-.02em;margin-top:14px;
+    text-shadow:0 2px 24px rgba(0,25,101,.35);
+  }
+  #heroIntro{
+    max-width:430px;margin-top:18px;
+    font-size:16.5px;font-weight:600;line-height:1.55;color:var(--tint);
+  }
+  #hero .btn{margin-top:30px;}
+  #scrollCue{
+    position:absolute;bottom:22px;left:50%;translate:-50% 0;
+    font-size:18px;color:rgba(255,255,255,.6);
+    animation:cueBob 2.2s ease-in-out infinite;
+  }
+  @keyframes cueBob{0%,100%{transform:translateY(0);}50%{transform:translateY(7px);}}
+
+  /* hero load-in */
+  #hero > *{animation:fadeUp .7s ease-out both;}
+  #hero > *:nth-child(1){animation-delay:.05s;}
+  #hero > *:nth-child(2){animation-delay:.15s;}
+  #hero > *:nth-child(3){animation-delay:.25s;}
+  #hero > *:nth-child(4){animation-delay:.35s;}
+  #hero > *:nth-child(5){animation-delay:.6s;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+
+  /* ---------- content sections ---------- */
+  .wrap{max-width:660px;margin:0 auto;padding:0 20px;}
+  section{margin-bottom:22px;}
+  .card{
+    background:#fff;color:var(--blue);border-radius:24px;
+    padding:32px 30px 30px;
+    box-shadow:0 24px 70px rgba(0,17,63,.3);
+  }
+  section h2{font-size:26px;font-weight:800;line-height:1.15;margin-top:10px;}
+  section p{font-size:15.5px;font-weight:600;line-height:1.65;margin-top:14px;}
+  .card p{color:#33477E;}
+  .card a{color:var(--magenta);font-weight:800;text-decoration-thickness:2px;text-underline-offset:3px;}
+
+  /* on-blue section (the concept) */
+  .onblue{padding:34px 10px 10px;text-align:center;}
+  .onblue p{max-width:480px;margin:14px auto 0;color:var(--tint);}
+
+  /* signature ripple graphic */
+  #rippleStage{
+    position:relative;height:230px;margin-top:26px;
+    display:grid;place-items:center;overflow:visible;
+  }
+  #rsDisc{
+    width:64px;height:64px;border-radius:50%;
+    border:15px solid #fff;background:transparent;
+    box-shadow:0 0 44px rgba(255,255,255,.35);
+    animation:discBreathe 3.6s ease-in-out infinite;
+  }
+  @keyframes discBreathe{
+    0%,100%{box-shadow:0 0 44px rgba(255,255,255,.3);}
+    50%{box-shadow:0 0 66px rgba(255,255,255,.5);}
+  }
+  .rsRing{
+    position:absolute;left:50%;top:50%;translate:-50% -50%;
+    width:64px;height:64px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.65);opacity:0;
+    animation:rsRip 4.5s cubic-bezier(.16,.6,.4,1) infinite;
+    animation-delay:var(--d,0s);
+  }
+  @keyframes rsRip{
+    0%{transform:scale(1);opacity:.85;}
+    75%{opacity:0;}
+    100%{transform:scale(3.4);opacity:0;}
+  }
+
+  /* scroll reveal (JS adds .in; without JS everything stays visible) */
+  html.js .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease;}
+  html.js .reveal.in{opacity:1;transform:none;}
+
+  /* ---------- legal ---------- */
+  #legal{margin-top:46px;}
+  #legal .eyebrow{display:block;text-align:center;margin-bottom:14px;}
+  details{
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+    border-radius:18px;margin-bottom:12px;overflow:hidden;
+  }
+  summary{
+    list-style:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:17px 20px;
+    font-size:12px;letter-spacing:3px;font-weight:800;text-transform:uppercase;
+  }
+  summary::-webkit-details-marker{display:none;}
+  summary::after{content:"+";font-size:18px;font-weight:600;line-height:1;transition:transform .25s;}
+  details[open] summary::after{transform:rotate(45deg);}
+  .dbody{padding:0 20px 20px;}
+  .dbody p{font-size:14px;font-weight:600;line-height:1.65;color:rgba(255,255,255,.9);margin-top:0;}
+  .dbody ul{margin:12px 0 0 18px;}
+  .dbody li{font-size:14px;font-weight:600;line-height:1.7;color:rgba(255,255,255,.9);margin-top:4px;}
+
+  /* ---------- bottom CTA + footer ---------- */
+  #bottomCta{text-align:center;padding:44px 20px 10px;}
+  footer{
+    position:relative;z-index:1;
+    max-width:660px;margin:0 auto;
+    padding:40px 20px calc(26px + env(safe-area-inset-bottom));
+    display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+  }
+  #claim{font-size:11px;letter-spacing:2.5px;font-weight:700;line-height:1.7;color:rgba(255,255,255,.9);}
+  #claim b{color:#fff;}
+  footer img{width:90px;opacity:.95;}
+
+  @media (max-width:600px){
+    footer img{width:74px;}
+    #claim{font-size:9.5px;letter-spacing:2px;}
+    .card{padding:28px 22px 26px;}
+    section h2{font-size:23px;}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto;}
+    #hero > *,.standing,#rsDisc,#scrollCue{animation:none;}
+    html.js .reveal{opacity:1;transform:none;transition:none;}
+    .rsRing{animation:none;}
+    .rsRing:nth-of-type(1){transform:scale(1.5);opacity:.45;}
+    .rsRing:nth-of-type(2){transform:scale(2.2);opacity:.25;}
+    .rsRing:nth-of-type(3){transform:scale(2.9);opacity:.12;}
+  }
+</style>
+</head>
+<body>
+
+<div id="bgfx" aria-hidden="true">
+  <div class="standing" style="width:64vmin;height:64vmin;--o:.07;"></div>
+  <div class="standing" style="width:105vmin;height:105vmin;--o:.06;animation-delay:.8s;"></div>
+  <div class="standing" style="width:144vmin;height:144vmin;--o:.05;animation-delay:1.6s;"></div>
+  <div class="standing" style="width:185vmin;height:185vmin;--o:.04;animation-delay:2.4s;"></div>
+  <img id="ghostBull" src="assets/novo-bull-solo-white.png" alt="">
+</div>
+
+<div class="lang" role="group" aria-label="Language / Sprache">
+  <button type="button" id="langEn" aria-pressed="true">EN</button>
+  <button type="button" id="langDe" aria-pressed="false">DE</button>
+</div>
+
+<main>
+
+  <!-- 1 · hero -->
+  <section id="hero">
+    <div class="eyebrow">NOVO NORDISK &middot; GAMESCOM 2026</div>
+    <h1>The Waiting</h1>
+    <p id="heroIntro" data-i18n="hero.intro"></p>
+    <a class="btn" href="novo-ripple.html" data-i18n="cta.back"></a>
+    <div id="scrollCue">&darr;</div>
+  </section>
+
+  <div class="wrap">
+
+    <!-- 2 · why we're here -->
+    <section class="card reveal" id="why">
+      <span class="eyebrow" data-i18n="why.eyebrow"></span>
+      <h2 data-i18n="why.h"></h2>
+      <p data-i18n="why.p1"></p>
+      <p data-i18n="why.p2"></p>
+    </section>
+
+    <!-- 3 · who we are -->
+    <section class="card reveal" id="who">
+      <span class="eyebrow" data-i18n="who.eyebrow"></span><span class="chip">DRAFT &mdash; CLIENT COPY TBD</span>
+      <h2>Novo Nordisk</h2>
+      <p data-i18n="who.p"></p>
+    </section>
+
+    <!-- 4 · the concept -->
+    <section class="onblue reveal" id="concept">
+      <span class="eyebrow" data-i18n="concept.eyebrow"></span>
+      <h2 data-i18n="concept.h"></h2>
+      <p data-i18n="concept.p"></p>
+      <div id="rippleStage" aria-hidden="true">
+        <span class="rsRing" style="--d:0s;"></span>
+        <span class="rsRing" style="--d:1.5s;"></span>
+        <span class="rsRing" style="--d:3s;"></span>
+        <span id="rsDisc"></span>
+      </div>
+    </section>
+
+    <!-- 5 · legal -->
+    <section id="legal" class="reveal">
+      <span class="eyebrow" data-i18n="legal.eyebrow"></span>
+
+      <details id="impressum">
+        <summary><span>Impressum<span class="chip">DRAFT &mdash; CLIENT COPY TBD</span></span></summary>
+        <div class="dbody">
+          <p data-i18n="imp.p"></p>
+          <div class="placeholder">[CLIENT LEGAL: Impressum details &mdash; provider name, address, represented by, contact, commercial register entry, VAT ID. Mandatory under &sect;5 TMG / &sect;18 MStV for Germany.]</div>
+        </div>
+      </details>
+
+      <details id="privacy">
+        <summary><span data-i18n="priv.sum"></span></summary>
+        <div class="dbody">
+          <span class="chip" style="margin:0 0 12px;display:inline-block;">DRAFT &mdash; CLIENT COPY TBD</span>
+          <p data-i18n="priv.p"></p>
+          <ul data-i18n="priv.list"></ul>
+          <div class="placeholder">[CLIENT LEGAL: Full privacy policy &mdash; controller, legal basis (GDPR Art.&nbsp;6), retention periods, processors, data subject rights, DPO contact.]</div>
+        </div>
+      </details>
+    </section>
+
+    <!-- 6 · bottom CTA -->
+    <div id="bottomCta" class="reveal">
+      <a class="btn" href="novo-ripple.html" data-i18n="cta.back"></a>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div id="claim"><span data-i18n="foot.tag1"></span><br><b data-i18n="foot.tag2"></b></div>
+  <img src="assets/novo-logo-white.png" alt="Novo Nordisk">
+</footer>
+
+<script>
+(() => {
+'use strict';
+document.documentElement.classList.add('js');
+
+const LANG_KEY = 'novo-lang';
+
+const STR = {
+  en: {
+    'doc.title': 'About the campaign — The Waiting',
+    'cta.back': '← BACK TO THE GAME',
+    'hero.intro': 'A 15-second game for the longest queues at Gamescom. Tap the circle, make ripples, and see what one small action can set off.',
+    'why.eyebrow': "Why we're here",
+    'why.h': 'A health company at a gaming expo. On purpose.',
+    'why.p1': 'Gamescom means queues, and queues mean waiting. Waiting for a hall opening or a hands-on demo is fine — waiting on your health is not.',
+    'why.p2': 'So instead of putting that on a poster, we built a game you can finish before the line moves: 15 seconds, one circle, as many ripples as you can make.',
+    'who.eyebrow': 'Who we are',
+    'who.p': 'Novo Nordisk is a global healthcare company headquartered in Denmark. For more than 100 years, one idea has kept us going: small, steady actions can change what’s possible for people’s health. Learn more at <a href="https://www.novonordisk.com" target="_blank" rel="noopener">novonordisk.com<\/a>.',
+    'concept.eyebrow': 'The concept',
+    'concept.h': 'One tap. One ripple.',
+    'concept.p': 'Look closely at our logo: inside it lives a circle. Drop a circle into water and you get a ripple — one small action, a visible response, travelling further than the point where it started. That’s the whole game. And it’s how we think about health: it doesn’t take a grand gesture. Just a tap. Then another.',
+    'legal.eyebrow': 'Legal',
+    'imp.p': 'Provider identification as required by German law will appear here.',
+    'priv.sum': 'Privacy',
+    'priv.p': 'Straight answers, because you’re standing in a queue:',
+    'priv.list': '<li>The game runs entirely in your browser. No account, no sign-up, no app.<\/li><li>If you join the leaderboard, we store your score with the nickname you type — nothing else.<\/li><li>No tracking cookies, no ads, no profiling.<\/li><li>Leaderboard data is stored in the EU.<\/li><li>Don’t want to appear? Skip the nickname — the game plays exactly the same.<\/li>',
+    'foot.tag1': 'SOME THINGS ARE WORTH THE WAIT.',
+    'foot.tag2': 'YOUR HEALTH ISN’T.'
+  },
+  de: {
+    'doc.title': 'Über die Kampagne — The Waiting',
+    'cta.back': '← ZURÜCK ZUM SPIEL',
+    'hero.intro': 'Ein 15-Sekunden-Spiel für die längsten Schlangen der Gamescom. Tipp auf den Kreis, mach Ripples — und sieh, was eine kleine Aktion auslösen kann.',
+    'why.eyebrow': 'Warum wir hier sind',
+    'why.h': 'Ein Gesundheitsunternehmen auf einer Gaming-Messe. Mit Absicht.',
+    'why.p1': 'Gamescom heißt Schlangestehen, und Schlangestehen heißt Warten. Auf das Hallen-Opening oder die Hands-on-Demo zu warten ist okay — auf deine Gesundheit zu warten nicht.',
+    'why.p2': 'Deshalb hängen wir das nicht auf ein Plakat, sondern haben ein Spiel gebaut, das fertig ist, bevor sich die Schlange bewegt: 15 Sekunden, ein Kreis, so viele Ripples wie möglich.',
+    'who.eyebrow': 'Wer wir sind',
+    'who.p': 'Novo Nordisk ist ein globales Gesundheitsunternehmen mit Hauptsitz in Dänemark. Seit über 100 Jahren treibt uns eine Idee an: Kleine, beständige Schritte können verändern, was für die Gesundheit von Menschen möglich ist. Mehr auf <a href="https://www.novonordisk.com" target="_blank" rel="noopener">novonordisk.com<\/a>.',
+    'concept.eyebrow': 'Das Konzept',
+    'concept.h': 'Ein Tap. Ein Ripple.',
+    'concept.p': 'Schau dir unser Logo genau an: Darin steckt ein Kreis. Lass einen Kreis ins Wasser fallen und du bekommst einen Ripple — eine kleine Aktion, eine sichtbare Reaktion, die weiter trägt als der Punkt, an dem sie begann. Das ist das ganze Spiel. Und genau so denken wir über Gesundheit: Es braucht keine große Geste. Nur einen Tap. Und dann noch einen.',
+    'legal.eyebrow': 'Rechtliches',
+    'imp.p': 'Anbieterkennzeichnung gemäß den gesetzlichen Vorgaben folgt hier.',
+    'priv.sum': 'Datenschutz',
+    'priv.p': 'Klare Antworten, weil du gerade in einer Schlange stehst:',
+    'priv.list': '<li>Das Spiel läuft komplett in deinem Browser. Kein Account, keine Anmeldung, keine App.<\/li><li>Wenn du dich in die Bestenliste einträgst, speichern wir deinen Score zusammen mit deinem Nickname — sonst nichts.<\/li><li>Keine Tracking-Cookies, keine Werbung, kein Profiling.<\/li><li>Die Daten der Bestenliste liegen in der EU.<\/li><li>Willst du nicht auftauchen? Lass den Nickname einfach weg — das Spiel bleibt genau dasselbe.<\/li>',
+    'foot.tag1': 'MANCHE DINGE SIND DAS WARTEN WERT.',
+    'foot.tag2': 'DEINE GESUNDHEIT NICHT.'
+  }
+};
+
+const enBtn = document.getElementById('langEn');
+const deBtn = document.getElementById('langDe');
+
+function setLang(l){
+  const s = STR[l] || STR.en;
+  document.documentElement.lang = l;
+  document.title = s['doc.title'];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const v = s[el.dataset.i18n];
+    if (v !== undefined) el.innerHTML = v;
+  });
+  enBtn.setAttribute('aria-pressed', String(l === 'en'));
+  deBtn.setAttribute('aria-pressed', String(l === 'de'));
+}
+
+/* priority: ?lang= (geo QR deep link) → stored choice → browser language */
+let lang = new URLSearchParams(location.search).get('lang');
+if (lang !== 'en' && lang !== 'de') {
+  lang = null;
+  try { lang = localStorage.getItem(LANG_KEY); } catch (e) {}
+}
+if (lang !== 'en' && lang !== 'de') {
+  lang = (navigator.language || '').toLowerCase().startsWith('de') ? 'de' : 'en';
+}
+setLang(lang);
+
+function choose(l){
+  setLang(l);
+  try { localStorage.setItem(LANG_KEY, l); } catch (e) {}
+}
+enBtn.addEventListener('click', () => choose('en'));
+deBtn.addEventListener('click', () => choose('de'));
+
+/* scroll reveal — animation itself is pure CSS; JS only flips a class */
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+} else {
+  document.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+}
+})();
+</script>
+</body>
+</html>
