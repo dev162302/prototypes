@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#00103f">
+<title>PULSE — one tap, keep rising</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#00103f;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none}
+  canvas{display:block;width:100%;height:100%;touch-action:none;cursor:pointer}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+(() => {
+"use strict";
+
+/* ============================================================
+   PULSE
+   A one-tap climber in the Color Switch lineage: tap to rise
+   against gravity, and you may only pass through the arc of a
+   rotating ring that matches your current colour. Switchers
+   flip your colour, so the same ring means something different
+   every time you meet it.
+
+   Two deliberate departures from the original:
+   1. Every colour ALSO carries a distinct stroke pattern
+      (solid / dashed / double / dotted), so the game is
+      playable without colour vision. A colour-matching game is
+      otherwise one of the least accessible formats there is,
+      which is a poor look for a health brand.
+   2. The rings are the brand circle, and each tap emits a small
+      ripple — the campaign device, present but not the mechanic.
+
+   BRAND NOTE: hues below are PLACEHOLDERS. Novo's guide limits
+   highlight colours to small elements, so a field of magenta
+   arcs needs sign-off or a palette substitution before this
+   goes anywhere near a client.
+   ============================================================ */
+
+const cv = document.getElementById("game");
+const ctx = cv.getContext("2d", { alpha: false });
+
+const C = {
+  deep: "#00103f", navy: "#012a70", blue: "#0a4ea8", mid: "#0d63cf",
+  bright: "#7fd4ff", white: "#f4f9ff", dim: "#9fb6d8"
+};
+
+/* colour + pattern pairs — never colour alone */
+const HUES = [
+  { col: "#7fd4ff", pat: "solid",  name: "CYAN"    },
+  { col: "#ff4fa3", pat: "dashed", name: "MAGENTA" },
+  { col: "#7cf0b4", pat: "double", name: "MINT"    },
+  { col: "#ffc24d", pat: "dotted", name: "AMBER"   }
+];
+
+/* ---------- maths ------------------------------------------ */
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const RI = (a, b) => Math.floor(rnd(a, b + 1));
+const TAU = Math.PI * 2;
+const approach = (v, t, r) => v < t ? Math.min(v + r, t) : Math.max(v - r, t);
+const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- viewport --------------------------------------- */
+let VW = 960, VH = 540, scale = 1, dpr = 1, ox = 0, oy = 0;
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  VH = 540;
+  VW = Math.round(clamp(VH * (w / h), 420, 1500));   // portrait-friendly: this one plays either way
+  scale = Math.min(w / VW, h / VH);
+  ox = (w - VW * scale) / 2;
+  oy = (h - VH * scale) / 2;
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  applyTransform();
+}
+function applyTransform() { ctx.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr); }
+function clearFrame() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = C.deep;
+  ctx.fillRect(0, 0, cv.width / dpr, cv.height / dpr);
+  applyTransform();
+}
+addEventListener("resize", resize);
+addEventListener("orientationchange", () => setTimeout(resize, 120));
+if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(cv);
+
+/* ---------- audio ------------------------------------------ */
+const Audio_ = {
+  ctx: null, on: true,
+  init() { if (this.ctx) return; try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} },
+  resume() { if (this.ctx && this.ctx.state === "suspended") this.ctx.resume(); },
+  blip(f, dur, type = "sine", vol = 0.05, slide = 0) {
+    if (!this.on || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  tap()    { this.blip(300, 0.09, "sine", 0.035, 160); },
+  pass(n)  { this.blip(440 * Math.pow(1.06, Math.min(n, 24)), 0.16, "triangle", 0.05); },
+  swap()   { this.blip(680, 0.18, "sine", 0.045, 240); },
+  token()  { this.blip(980, 0.06, "triangle", 0.04); },
+  die()    { this.blip(200, 0.4, "sawtooth", 0.06, -150); },
+  best()   { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.blip(f, 0.18, "sine", 0.05), i * 100)); }
+};
+
+/* ---------- input ------------------------------------------ */
+const Input = { tapped: false, tapPos: null, pointers: new Map(), confirm: false };
+addEventListener("keydown", e => {
+  if (["Space", "ArrowUp", "Enter", "KeyM"].includes(e.code)) e.preventDefault();
+  if (e.repeat) return;
+  if (e.code === "Space" || e.code === "ArrowUp") { Input.tapped = true; Input.tapPos = null; }
+  if (e.code === "Enter") Input.confirm = true;
+  if (e.code === "KeyM") Audio_.on = !Audio_.on;
+  Audio_.init(); Audio_.resume();
+});
+function ptPos(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left - ox) / scale, y: (e.clientY - r.top - oy) / scale };
+}
+cv.addEventListener("pointerdown", e => {
+  const p = ptPos(e);
+  Input.pointers.set(e.pointerId, p);
+  Input.tapped = true; Input.tapPos = p;
+  Audio_.init(); Audio_.resume();
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+});
+cv.addEventListener("pointermove", e => { if (Input.pointers.has(e.pointerId)) Input.pointers.set(e.pointerId, ptPos(e)); });
+const endPtr = e => Input.pointers.delete(e.pointerId);
+cv.addEventListener("pointerup", endPtr);
+cv.addEventListener("pointercancel", endPtr);
+cv.addEventListener("contextmenu", e => e.preventDefault());
+
+/* ---------- save -------------------------------------------- */
+/* ?skip=1 jumps past the pre-loader, ?play=1 straight into a run (demos/testing) */
+const QS = new URLSearchParams(location.search || location.hash.replace(/^#/, ""));
+
+const SAVE_KEY = "pulse.save.v1";
+let Save = { best: 0, plays: 0, top: [], clientId: "" };
+try { Object.assign(Save, JSON.parse(localStorage.getItem(SAVE_KEY) || "{}")); } catch (e) {}
+if (!Save.clientId) Save.clientId = "c-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(Save)); } catch (e) {} }
+persist();
+
+/* ============================================================
+   GAME
+   ============================================================ */
+const GRAV = 1500;
+const HOP = -540;
+const BALL_R = 13;
+const GAP_MIN = 300, GAP_MAX = 400;
+
+const Game = {
+  state: "preload", t: 0, stateT: 0,
+  camY: 0, score: 0, passed: 0, tokens: 0, shake: 0,
+  ball: null, rings: [], swaps: [], toks: [], parts: [], ripples: [],
+  spawnY: 0, newBest: false,
+
+  reset() {
+    this.score = 0; this.passed = 0; this.tokens = 0; this.newBest = false;
+    this.rings = []; this.swaps = []; this.toks = []; this.parts = []; this.ripples = [];
+    this.ball = { x: 0, y: 0, vy: 0, hue: 0, sq: 1, blink: rnd(1, 4), rot: 0, trail: [] };
+    this.camY = this.ball.y - VH * 0.62;
+    this.spawnY = 130;
+    for (let i = 0; i < 6; i++) this.spawnNext();
+  },
+
+  /* difficulty rides on rings passed, not on time */
+  spawnNext() {
+    const n = this.rings.length;
+    const diff = clamp(this.passed / 30, 0, 1);
+    const gap = lerp(GAP_MAX, GAP_MIN, diff);
+    this.spawnY -= gap;
+    const y = this.spawnY;
+
+    const roll = Math.random();
+    let kind = "ring";
+    if (this.passed > 4 && roll > 0.82) kind = "dual";
+    else if (this.passed > 8 && roll > 0.64) kind = "prop";
+    else if (this.passed > 12 && roll > 0.5) kind = "pulse";
+
+    const order = shuffled4();
+    const spd = (0.55 + diff * 0.75) * (Math.random() < 0.5 ? 1 : -1);
+    const R = lerp(118, 96, diff);
+
+    if (kind === "dual") {
+      this.rings.push({ kind: "ring", y, r: R + 34, rot: rnd(0, TAU), spd: spd * 0.8, order, th: 13, passed: false, lead: true });
+      this.rings.push({ kind: "ring", y, r: R - 26, rot: rnd(0, TAU), spd: -spd * 1.15, order: shuffled4(), th: 13, passed: false, lead: false });
+    } else if (kind === "prop") {
+      this.rings.push({ kind: "prop", y, r: R + 12, rot: rnd(0, TAU), spd, order, th: 15, passed: false, lead: true });
+    } else if (kind === "pulse") {
+      this.rings.push({ kind: "pulse", y, r: R, rot: rnd(0, TAU), spd: spd * 0.9, order, th: 13, passed: false, lead: true, ph: rnd(0, TAU) });
+    } else {
+      this.rings.push({ kind: "ring", y, r: R, rot: rnd(0, TAU), spd, order, th: 14, passed: false, lead: true });
+    }
+
+    /* a switcher between rings, and sometimes a token to chase */
+    if (n === 0 || Math.random() < 0.72) this.swaps.push({ y: y + gap * 0.5, x: 0, got: false, ph: rnd(0, TAU) });
+    if (Math.random() < 0.5) this.toks.push({ y: y + gap * (0.25 + Math.random() * 0.5), x: 0, got: false, ph: rnd(0, TAU) });
+  },
+
+  start() { this.reset(); this.setState("play"); },
+  setState(s) { this.state = s; this.stateT = 0; },
+
+  die(reason) {
+    if (this.state !== "play") return;
+    this.shake = 20; Audio_.die();
+    burst(this.ball.x, this.ball.y, 26, HUES[this.ball.hue].col, 340, 5);
+    Save.plays = (Save.plays || 0) + 1;
+    if (this.score > (Save.best || 0)) { Save.best = this.score; this.newBest = true; Audio_.best(); }
+    Save.top = (Save.top || []).concat([this.score]).sort((a, b) => b - a).slice(0, 5);
+    persist();
+    this.deathReason = reason;
+    this.setState("dead");
+  }
+};
+
+function shuffled4() {
+  const a = [0, 1, 2, 3];
+  for (let i = 3; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+/* ---------- particles / ripples ----------------------------- */
+function burst(x, y, n, col, speed = 220, r = 4) {
+  for (let i = 0; i < n; i++) {
+    const a = rnd(0, TAU), s = rnd(speed * 0.3, speed);
+    Game.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rnd(0.35, 0.8), max: 0.8, r: rnd(r * 0.4, r), col });
+  }
+}
+function updateParts(dt) {
+  for (let i = Game.parts.length - 1; i >= 0; i--) {
+    const p = Game.parts[i];
+    p.life -= dt;
+    if (p.life <= 0) { Game.parts.splice(i, 1); continue; }
+    p.vy += 700 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  for (let i = Game.ripples.length - 1; i >= 0; i--) {
+    const r = Game.ripples[i];
+    r.r += 420 * dt; r.a -= 1.8 * dt;
+    if (r.a <= 0) Game.ripples.splice(i, 1);
+  }
+}
+
+/* ============================================================
+   UPDATE
+   ============================================================ */
+function updatePlay(dt) {
+  const b = Game.ball;
+
+  if (Input.tapped) {
+    Input.tapped = false;
+    b.vy = HOP; b.sq = 0.76;
+    Audio_.tap();
+    Game.ripples.push({ x: b.x, y: b.y, r: 8, a: 0.8 });
+  }
+
+  b.vy += GRAV * dt;
+  b.vy = clamp(b.vy, HOP * 1.6, 900);
+  b.y += b.vy * dt;
+  b.sq = approach(b.sq, 1, dt * 3.2);
+  b.rot += dt * 2;
+  b.blink -= dt;
+  if (b.blink < -0.14) b.blink = rnd(2, 5);
+
+  b.trail.unshift({ x: b.x, y: b.y });
+  if (b.trail.length > 14) b.trail.pop();
+
+  /* camera trails upward only — falling back does not scroll the world down */
+  Game.camY = Math.min(Game.camY, b.y - VH * 0.62);
+
+  /* fell out of the bottom of the screen */
+  if (b.y > Game.camY + VH + 80) { Game.die("fell"); return; }
+
+  for (const r of Game.rings) {
+    r.rot += r.spd * dt;
+    if (r.kind === "pulse") r.ph += dt * 1.6;
+  }
+
+  /* ---- ring collision: only the matching arc lets you through ---- */
+  for (const r of Game.rings) {
+    const rad = ringRadius(r);
+    const d = Math.hypot(b.x, b.y - r.y);
+    const band = r.th / 2 + BALL_R;
+    if (Math.abs(d - rad) < band) {
+      const seg = segmentAt(r, Math.atan2(b.y - r.y, b.x));
+      if (seg !== -1 && r.order[seg] !== b.hue) { Game.die("mismatch"); return; }
+    }
+    if (!r.passed && r.lead && b.y < r.y - rad - BALL_R) {
+      r.passed = true;
+      Game.passed++; Game.score += 1;
+      Audio_.pass(Game.passed);
+      Game.ripples.push({ x: 0, y: r.y, r: rad * 0.5, a: 0.55 });
+    }
+  }
+
+  for (const s of Game.swaps) {
+    if (s.got) continue;
+    s.ph += dt * 3;
+    if (Math.hypot(b.x - s.x, b.y - s.y) < BALL_R + 17) {
+      s.got = true;
+      let h = b.hue;
+      while (h === b.hue) h = Math.floor(Math.random() * 4);
+      b.hue = h;
+      Audio_.swap();
+      burst(s.x, s.y, 12, HUES[h].col, 190, 3.5);
+    }
+  }
+  for (const k of Game.toks) {
+    if (k.got) continue;
+    k.ph += dt * 3;
+    if (Math.hypot(b.x - k.x, b.y - k.y) < BALL_R + 15) {
+      k.got = true; Game.tokens++; Game.score += 1;
+      Audio_.token();
+      burst(k.x, k.y, 8, C.bright, 160, 3);
+    }
+  }
+
+  /* keep the world stocked ahead and drop what is far below */
+  while (Game.spawnY > Game.camY - VH * 1.6) Game.spawnNext();
+  const cutoff = Game.camY + VH + 400;
+  Game.rings = Game.rings.filter(r => r.y < cutoff);
+  Game.swaps = Game.swaps.filter(s => s.y < cutoff);
+  Game.toks = Game.toks.filter(k => k.y < cutoff);
+}
+
+/* rings are centred on the play column, so x is always 0 */
+function ringRadius(r) {
+  return r.kind === "pulse" ? r.r + Math.sin(r.ph) * 26 : r.r;
+}
+function segmentAt(r, ang) {
+  let a = ang - r.rot;
+  a = ((a % TAU) + TAU) % TAU;
+  if (r.kind === "prop") {
+    /* four arms with open air between them */
+    const seg = Math.floor(a / (TAU / 4));
+    const within = a - seg * (TAU / 4);
+    return within < (TAU / 4) * 0.62 ? seg : -1;
+  }
+  return Math.floor(a / (TAU / 4));
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function bg() {
+  const g = ctx.createLinearGradient(0, 0, 0, VH);
+  g.addColorStop(0, C.deep); g.addColorStop(0.6, C.navy); g.addColorStop(1, C.blue);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+}
+function bgRings(t) {
+  if (REDUCED) return;
+  ctx.save();
+  const drift = -Game.camY * 0.08;
+  for (let i = 0; i < 7; i++) {
+    const x = ((i * 233) % (VW + 300)) - 150;
+    const y = (((i * 197 + drift) % (VH + 400)) + VH + 400) % (VH + 400) - 200;
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = "rgba(127,212,255," + (0.09 - k * 0.024).toFixed(3) + ")";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 40 + k * 26 + (i % 3) * 20, 0, TAU); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/* stroke an arc in a hue's own pattern, so colour is never the only cue */
+function patternArc(cx, cy, rad, from, to, hue, th) {
+  const h = HUES[hue];
+  ctx.save();
+  ctx.strokeStyle = h.col;
+  ctx.lineCap = "butt";
+  if (h.pat === "solid") {
+    ctx.lineWidth = th;
+    ctx.beginPath(); ctx.arc(cx, cy, rad, from, to); ctx.stroke();
+  } else if (h.pat === "dashed") {
+    ctx.lineWidth = th;
+    ctx.setLineDash([16, 11]);
+    ctx.beginPath(); ctx.arc(cx, cy, rad, from, to); ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (h.pat === "double") {
+    ctx.lineWidth = th * 0.3;
+    ctx.beginPath(); ctx.arc(cx, cy, rad - th * 0.3, from, to); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, rad + th * 0.3, from, to); ctx.stroke();
+  } else {
+    ctx.lineWidth = th;
+    ctx.setLineDash([3, 12]);
+    ctx.lineCap = "round";
+    ctx.beginPath(); ctx.arc(cx, cy, rad, from, to); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
+function drawRing(r) {
+  const rad = ringRadius(r);
+  const quarter = TAU / 4;
+  const span = r.kind === "prop" ? quarter * 0.62 : quarter;
+  ctx.save();
+  /* faint guide circle so the ring reads as one object */
+  ctx.strokeStyle = "rgba(255,255,255,0.07)"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(0, r.y, rad, 0, TAU); ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const from = r.rot + i * quarter;
+    patternArc(0, r.y, rad, from, from + span, r.order[i], r.th);
+  }
+  ctx.restore();
+}
+
+function drawSwap(s, t) {
+  const pulse = 1 + Math.sin(s.ph) * 0.12;
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  for (let i = 0; i < 4; i++) {
+    ctx.strokeStyle = HUES[i].col;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 15 * pulse, i * TAU / 4 + s.ph * 0.6, (i + 1) * TAU / 4 + s.ph * 0.6 - 0.18);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(s.x, s.y, 4.5, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+function drawToken(k) {
+  const y = k.y + Math.sin(k.ph) * 3;
+  ctx.save();
+  ctx.globalAlpha = 0.22; ctx.fillStyle = C.bright;
+  ctx.beginPath(); ctx.arc(k.x, y, 15, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = C.bright; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(k.x, y, 9, 0, TAU); ctx.stroke();
+  ctx.fillStyle = C.white;
+  ctx.beginPath(); ctx.arc(k.x, y, 3.5, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+function drawBall(b) {
+  const h = HUES[b.hue];
+  ctx.save();
+  /* trail */
+  for (let i = b.trail.length - 1; i > 0; i--) {
+    const p = b.trail[i];
+    ctx.globalAlpha = (1 - i / b.trail.length) * 0.22;
+    ctx.fillStyle = h.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, BALL_R * (1 - i / b.trail.length) * 0.8, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.translate(b.x, b.y);
+  ctx.scale(b.sq, 2 - b.sq);
+
+  /* the ball wears its own colour AND its own pattern */
+  ctx.save();
+  ctx.rotate(b.rot);
+  patternArc(0, 0, BALL_R + 6, 0, TAU, b.hue, 5);
+  ctx.restore();
+
+  const g = ctx.createRadialGradient(-4, -5, 1, 0, 0, BALL_R * 1.3);
+  g.addColorStop(0, "#ffffff"); g.addColorStop(0.7, C.white); g.addColorStop(1, "#c7ddf7");
+  ctx.beginPath(); ctx.arc(0, 0, BALL_R, 0, TAU);
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 2.4; ctx.strokeStyle = h.col; ctx.stroke();
+
+  ctx.fillStyle = "#0b2a55";
+  const open = b.blink > 0 ? 3.1 : 0.8;
+  ctx.beginPath(); ctx.ellipse(-4.2, -2, 2.1, open, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(4.2, -2, 2.1, open, 0, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+function drawWorld(t) {
+  bg(); bgRings(t);
+  ctx.save();
+  let sx = 0, sy = 0;
+  if (Game.shake > 0) { sx = rnd(-Game.shake, Game.shake); sy = rnd(-Game.shake, Game.shake); }
+  ctx.translate(VW / 2 + sx, -Game.camY + sy);
+
+  for (const r of Game.ripples) {
+    ctx.save();
+    ctx.globalAlpha = clamp(r.a, 0, 1) * 0.7;
+    ctx.strokeStyle = C.bright; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  for (const k of Game.toks) if (!k.got) drawToken(k);
+  for (const s of Game.swaps) if (!s.got) drawSwap(s, t);
+  for (const r of Game.rings) drawRing(r);
+  if (Game.ball) drawBall(Game.ball);
+  for (const p of Game.parts) {
+    ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ---------- UI helpers -------------------------------------- */
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function centreText(txt, y, size, col, weight = 800) {
+  ctx.font = `${weight} ${size}px system-ui,-apple-system,sans-serif`;
+  ctx.textAlign = "center"; ctx.fillStyle = col;
+  ctx.fillText(txt, VW / 2, y);
+}
+function bigButton(label, y, w = 240, h = 52, primary = true) {
+  const x = VW / 2 - w / 2;
+  let hot = false;
+  for (const p of Input.pointers.values())
+    if (p.x > x && p.x < x + w && p.y > y - h / 2 && p.y < y + h / 2) hot = true;
+  ctx.save();
+  if (primary) {
+    const g = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+    g.addColorStop(0, hot ? "#3f9bea" : C.mid); g.addColorStop(1, hot ? "#0d63cf" : C.blue);
+    ctx.fillStyle = g;
+  } else ctx.fillStyle = hot ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.08)";
+  roundRect(x, y - h / 2, w, h, h / 2); ctx.fill();
+  ctx.strokeStyle = primary ? C.bright : "rgba(255,255,255,0.3)"; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.fillStyle = "#fff"; ctx.font = "800 17px system-ui,sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(label, VW / 2, y + 6);
+  ctx.restore();
+  return { x, y: y - h / 2, w, h };
+}
+function tappedIn(r) {
+  return Input.tapped && Input.tapPos &&
+    Input.tapPos.x > r.x && Input.tapPos.x < r.x + r.w &&
+    Input.tapPos.y > r.y && Input.tapPos.y < r.y + r.h;
+}
+function ringMark(x, y, s, alpha = 1, phase = 0) {
+  ctx.save();
+  ctx.globalAlpha = alpha; ctx.lineCap = "round";
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(x, y, s * (0.36 + i * 0.32) * (1 + Math.sin(phase + i * 0.8) * 0.03), 0, TAU);
+    ctx.strokeStyle = i === 0 ? C.white : C.bright;
+    ctx.lineWidth = s * (0.1 - i * 0.02);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ---------- HUD --------------------------------------------- */
+function drawHUD() {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "900 46px system-ui,sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillText(String(Game.score), VW / 2, 62);
+  ctx.font = "700 11px system-ui,sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.fillText("BEST " + (Save.best || 0), VW / 2, 82);
+
+  /* current colour, named and patterned — reinforces the rule */
+  const h = HUES[Game.ball.hue];
+  ctx.save();
+  ctx.translate(34, 34);
+  patternArc(0, 0, 13, 0, TAU, Game.ball.hue, 5);
+  ctx.restore();
+  ctx.textAlign = "left";
+  ctx.font = "800 10px system-ui,sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.fillText(h.name, 54, 38);
+  ctx.restore();
+}
+
+/* ---------- screens ----------------------------------------- */
+function drawPreload() {
+  bg();
+  const e = clamp(Game.stateT / 1.1, 0, 1);
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    const d = clamp((Game.stateT - i * 0.16) / 0.7, 0, 1);
+    if (d <= 0) continue;
+    ctx.globalAlpha = 0.9 * (1 - d * 0.35);
+    ctx.beginPath();
+    ctx.arc(VW / 2, VH / 2 - 16, 24 + i * 28 * d, -Math.PI / 2, -Math.PI / 2 + TAU * d);
+    ctx.strokeStyle = i === 0 ? C.white : C.bright;
+    ctx.lineWidth = 5 - i * 0.9; ctx.lineCap = "round"; ctx.stroke();
+  }
+  ctx.globalAlpha = e;
+  centreText("NOVO NORDISK", VH / 2 + 104, 14, "rgba(255,255,255,0.85)", 700);
+  ctx.restore();
+  if (Game.stateT > 1.9 || (Input.tapped && Game.stateT > 0.5)) { Input.tapped = false; Game.setState("title"); }
+}
+
+function drawTitle(t) {
+  bg(); bgRings(t);
+  ringMark(VW / 2, VH * 0.20, 40, 0.9, t * 1.4);
+  centreText("PULSE", VH * 0.40, 58, "#fff", 900);
+  ctx.save(); ctx.globalAlpha = 0.72;
+  centreText("One tap. Keep rising.", VH * 0.40 + 26, 14, "#bcd6ff", 600);
+  ctx.restore();
+
+  /* the rule, shown rather than explained */
+  const y = VH * 0.53;
+  for (let i = 0; i < 4; i++) {
+    const x = VW / 2 - 84 + i * 56;
+    ctx.save(); ctx.translate(x, y);
+    patternArc(0, 0, 15, 0, TAU, i, 5);
+    ctx.restore();
+  }
+  ctx.save(); ctx.globalAlpha = 0.6;
+  centreText("pass only through your own colour", y + 34, 11, "#bcd6ff", 600);
+  ctx.restore();
+
+  const play = bigButton("PLAY", VH * 0.74);
+  ctx.save(); ctx.globalAlpha = 0.4;
+  centreText("tap anywhere to rise   ·   M mutes", VH - 22, 11, "#fff", 500);
+  ctx.restore();
+
+  if (tappedIn(play) || Input.confirm || Input.tapped) {
+    Input.tapped = false; Input.confirm = false; Game.start();
+  }
+}
+
+function drawDead(t) {
+  drawWorld(t);
+  ctx.save();
+  ctx.globalAlpha = clamp(Game.stateT * 2.2, 0, 0.86);
+  ctx.fillStyle = "rgba(0,16,63,1)"; ctx.fillRect(0, 0, VW, VH);
+  ctx.restore();
+
+  const w = Math.min(430, VW - 40);
+  ctx.save();
+  ctx.fillStyle = "rgba(0,16,63,0.92)";
+  roundRect(VW / 2 - w / 2, VH / 2 - 168, w, 336, 20); ctx.fill();
+  ctx.strokeStyle = "rgba(127,212,255,0.35)"; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+
+  centreText(Game.newBest ? "NEW BEST" : (Game.deathReason === "fell" ? "YOU DROPPED" : "WRONG COLOUR"),
+    VH / 2 - 126, 20, Game.newBest ? C.bright : "#fff", 900);
+  centreText(String(Game.score), VH / 2 - 76, 52, "#fff", 900);
+  ctx.save(); ctx.globalAlpha = 0.66;
+  centreText(`${Game.passed} rings  ·  ${Game.tokens} pulses  ·  best ${Save.best || 0}`, VH / 2 - 48, 11, "#bcd6ff", 600);
+  ctx.restore();
+
+  centreText("Some things are worth the wait.", VH / 2 - 16, 14, "#fff", 800);
+  centreText("Your health isn't.", VH / 2 + 4, 14, C.bright, 800);
+  ctx.save(); ctx.globalAlpha = 0.55;
+  centreText("We're Novo Nordisk. See what we're working on → novonordisk.com", VH / 2 + 26, 10, "#bcd6ff", 600);
+  ctx.restore();
+
+  const again = bigButton("TAP TO PLAY AGAIN", VH / 2 + 74, Math.min(280, w - 40));
+  ctx.save(); ctx.globalAlpha = 0.4;
+  centreText("concept prototype — colours are placeholders pending brand guidelines", VH / 2 + 138, 9, "#bcd6ff", 600);
+  ctx.restore();
+
+  /* generous: after a beat, a tap anywhere restarts */
+  if (Game.stateT > 0.7 && (Input.tapped || Input.confirm)) {
+    Input.tapped = false; Input.confirm = false; Game.start();
+  }
+}
+
+/* ============================================================
+   LOOP
+   ============================================================ */
+let last = performance.now(), acc = 0;
+const STEP = 1 / 120;
+
+function frame(now) {
+  const raw = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  Game.t += raw; Game.stateT += raw;
+
+  if (Game.state === "play") {
+    acc += raw;
+    let n = 0;
+    while (acc >= STEP && n < 8) { updatePlay(STEP); acc -= STEP; n++; if (Game.state !== "play") break; }
+  } else acc = 0;
+
+  updateParts(raw);
+  Game.shake = Math.max(0, Game.shake - raw * 70);
+
+  clearFrame();
+  switch (Game.state) {
+    case "preload": drawPreload(); break;
+    case "title":   drawTitle(Game.t); break;
+    case "play":    drawWorld(Game.t); drawHUD(); break;
+    case "dead":    drawDead(Game.t); break;
+  }
+
+  Input.tapped = false; Input.tapPos = null; Input.confirm = false;
+  requestAnimationFrame(frame);
+}
+
+resize();
+Game.reset();
+if (QS.get("play")) Game.start();
+else if (QS.get("skip")) Game.setState("title");
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

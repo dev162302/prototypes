@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05070d">
+<title>PULSE</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;overflow:hidden;background:#05070d;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #ui{pointer-events:none}
+  #fallback{position:fixed;inset:0;display:none;place-items:center;background:#05070d;
+    color:#8fa6c8;font:300 13px/1.8 system-ui,sans-serif;letter-spacing:.18em;text-align:center;padding:32px}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ui"></canvas>
+<div id="fallback">WEBGL2 REQUIRED</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ============================================================
+   PULSE
+   One tap to rise. Pass only through the arc that matches you.
+
+   Rendered in WebGL2 with a hand-written pipeline: additive
+   scene pass -> bright-pass threshold -> separable gaussian ->
+   composite with chromatic aberration, vignette and grain.
+   No engine, no scene graph — this is 2D, so importing a 3D
+   library would cost ~20x the bytes for nothing.
+
+   Colour is never the only signal: each identity also carries a
+   stroke pattern (solid / dashed / double / dotted), so the game
+   is playable with any colour vision deficiency.
+
+   BRAND NOTE: hues are placeholders pending guidelines.
+   ============================================================ */
+
+const glc = document.getElementById("gl");
+const uic = document.getElementById("ui");
+const gl = glc.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "high-performance" });
+if (!gl) { document.getElementById("fallback").style.display = "grid"; return; }
+const ui = uic.getContext("2d");
+
+/* ---------- palette: near-black ground, light does the work --- */
+const PAL = {
+  void:  [0.020, 0.027, 0.051],
+  deep:  [0.035, 0.090, 0.220]
+};
+const IDS = [
+  { rgb: [0.30, 0.88, 1.00], pat: "solid",  name: "CYAN"   },
+  { rgb: [0.65, 0.42, 1.00], pat: "dashed", name: "VIOLET" },
+  { rgb: [1.00, 0.68, 0.23], pat: "dotted", name: "AMBER"  },
+  { rgb: [1.00, 0.30, 0.42], pat: "double", name: "ROSE"   }
+];
+const css = c => `rgb(${(c[0]*255)|0},${(c[1]*255)|0},${(c[2]*255)|0})`;
+
+/* ---------- maths ------------------------------------------- */
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const lerp = (a,b,t) => a+(b-a)*t;
+const rnd = (a,b) => a+Math.random()*(b-a);
+const TAU = Math.PI*2;
+const REDUCED = matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ============================================================
+   GL PLUMBING
+   ============================================================ */
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function prog(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+const V_SCENE = `#version 300 es
+in vec2 aPos; in vec4 aCol;
+uniform vec2 uScale, uOffset, uView;
+out vec4 vCol;
+void main(){
+  vec2 px = aPos * uScale + uOffset;
+  vec2 p = px / uView * 2.0 - 1.0;
+  gl_Position = vec4(p.x, -p.y, 0.0, 1.0);
+  vCol = aCol;
+}`;
+const F_SCENE = `#version 300 es
+precision highp float;
+in vec4 vCol; out vec4 o;
+void main(){ o = vec4(vCol.rgb * vCol.a, vCol.a); }`;
+
+const V_QUAD = `#version 300 es
+in vec2 aPos; out vec2 vUv;
+void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+const F_BRIGHT = `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex; uniform float uThresh;
+void main(){
+  vec3 c = texture(uTex, vUv).rgb;
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  o = vec4(c * smoothstep(uThresh, uThresh + 0.30, l), 1.0);
+}`;
+
+/* separable gaussian, 9 taps */
+const F_BLUR = `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uTex; uniform vec2 uDir;
+const float W[5] = float[](0.2270270270, 0.1945945946, 0.1216216216, 0.0540540541, 0.0162162162);
+void main(){
+  vec3 c = texture(uTex, vUv).rgb * W[0];
+  for (int i = 1; i < 5; i++) {
+    vec2 off = uDir * float(i) * 1.28;
+    c += texture(uTex, vUv + off).rgb * W[i];
+    c += texture(uTex, vUv - off).rgb * W[i];
+  }
+  o = vec4(c, 1.0);
+}`;
+
+const F_COMP = `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform sampler2D uScene, uBloom;
+uniform float uBloomAmt, uAberr, uTime, uFlash, uVig;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void main(){
+  vec2 d = vUv - 0.5;
+  float r2 = dot(d, d);
+  /* chromatic split grows toward the edges and on impact */
+  float a = uAberr * (0.35 + r2 * 2.2);
+  vec3 base;
+  base.r = texture(uScene, vUv + d * a).r;
+  base.g = texture(uScene, vUv).g;
+  base.b = texture(uScene, vUv - d * a).b;
+  vec3 bl;
+  bl.r = texture(uBloom, vUv + d * a * 1.6).r;
+  bl.g = texture(uBloom, vUv).g;
+  bl.b = texture(uBloom, vUv - d * a * 1.6).b;
+  vec3 col = base + bl * uBloomAmt;
+  col += uFlash;
+  col *= 1.0 - uVig * pow(clamp(r2 * 2.1, 0.0, 1.0), 1.35);
+  col += (hash(vUv * 1024.0 + uTime) - 0.5) * 0.022;   /* grain kills banding */
+  o = vec4(col, 1.0);
+}`;
+
+const pScene = prog(V_SCENE, F_SCENE);
+const pBright = prog(V_QUAD, F_BRIGHT);
+const pBlur = prog(V_QUAD, F_BLUR);
+const pComp = prog(V_QUAD, F_COMP);
+
+const U = p => new Proxy({}, { get: (_, k) => gl.getUniformLocation(p, k) });
+const uS = U(pScene), uBr = U(pBright), uBl = U(pBlur), uC = U(pComp);
+
+/* fullscreen triangle */
+const quadVAO = gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+
+/* dynamic scene geometry: x, y, r, g, b, a */
+const MAXV = 90000;
+const verts = new Float32Array(MAXV * 6);
+let vn = 0;
+const sceneVAO = gl.createVertexArray();
+gl.bindVertexArray(sceneVAO);
+const sceneBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, sceneBuf);
+gl.bufferData(gl.ARRAY_BUFFER, verts.byteLength, gl.DYNAMIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
+gl.enableVertexAttribArray(1);
+gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 24, 8);
+gl.bindVertexArray(null);
+gl.bindAttribLocation(pScene, 0, "aPos");
+gl.bindAttribLocation(pScene, 1, "aCol");
+
+function vtx(x, y, c, a) {
+  if (vn >= MAXV) return;
+  const i = vn * 6;
+  verts[i] = x; verts[i+1] = y;
+  verts[i+2] = c[0]; verts[i+3] = c[1]; verts[i+4] = c[2]; verts[i+5] = a;
+  vn++;
+}
+function tri(x0,y0,x1,y1,x2,y2,c,a0,a1,a2) {
+  vtx(x0,y0,c,a0); vtx(x1,y1,c,a1); vtx(x2,y2,c,a2);
+}
+function quad(x0,y0,x1,y1,x2,y2,x3,y3,c,a) {
+  tri(x0,y0,x1,y1,x2,y2,c,a,a,a);
+  tri(x0,y0,x2,y2,x3,y3,c,a,a,a);
+}
+
+/* ---------- primitives -------------------------------------- */
+function disc(x, y, r, c, a, segs) {
+  segs = segs || Math.max(10, Math.min(48, (r * 0.7) | 0));
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * TAU, a1 = ((i + 1) / segs) * TAU;
+    tri(x, y, x + Math.cos(a0)*r, y + Math.sin(a0)*r, x + Math.cos(a1)*r, y + Math.sin(a1)*r, c, a, a, a);
+  }
+}
+/* radial falloff: bright centre, transparent rim — the bloom seed */
+function halo(x, y, r, c, a, segs) {
+  segs = segs || 26;
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * TAU, a1 = ((i + 1) / segs) * TAU;
+    tri(x, y, x + Math.cos(a0)*r, y + Math.sin(a0)*r, x + Math.cos(a1)*r, y + Math.sin(a1)*r, c, a, 0, 0);
+  }
+}
+function arc(x, y, r, th, from, to, c, a, segs) {
+  const span = to - from;
+  segs = segs || Math.max(3, Math.min(96, Math.ceil(Math.abs(span) * r / 5)));
+  const ri = r - th / 2, ro = r + th / 2;
+  for (let i = 0; i < segs; i++) {
+    const t0 = from + span * (i / segs), t1 = from + span * ((i + 1) / segs);
+    const c0 = Math.cos(t0), s0 = Math.sin(t0), c1 = Math.cos(t1), s1 = Math.sin(t1);
+    quad(x + c0*ri, y + s0*ri, x + c1*ri, y + s1*ri, x + c1*ro, y + s1*ro, x + c0*ro, y + s0*ro, c, a);
+  }
+}
+function seg(x0, y0, x1, y1, th, c, a) {
+  const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1;
+  const nx = -dy / L * th / 2, ny = dx / L * th / 2;
+  quad(x0+nx, y0+ny, x1+nx, y1+ny, x1-nx, y1-ny, x0-nx, y0-ny, c, a);
+}
+
+/* an identity's arc, drawn in its own pattern */
+function patArc(x, y, r, th, from, to, id, a) {
+  const P = IDS[id], c = P.rgb, span = to - from;
+  if (P.pat === "solid") {
+    arc(x, y, r, th, from, to, c, a);
+  } else if (P.pat === "dashed") {
+    const n = Math.max(2, Math.round(Math.abs(span) * r / 26));
+    for (let i = 0; i < n; i++) {
+      const t0 = from + span * (i / n), t1 = t0 + span / n * 0.58;
+      arc(x, y, r, th, t0, t1, c, a);
+    }
+  } else if (P.pat === "dotted") {
+    const n = Math.max(3, Math.round(Math.abs(span) * r / 20));
+    for (let i = 0; i < n; i++) {
+      const t = from + span * ((i + 0.5) / n);
+      disc(x + Math.cos(t)*r, y + Math.sin(t)*r, th * 0.42, c, a, 10);
+    }
+  } else {
+    arc(x, y, r - th * 0.32, th * 0.28, from, to, c, a);
+    arc(x, y, r + th * 0.32, th * 0.28, from, to, c, a);
+  }
+}
+
+/* ---------- framebuffers ------------------------------------ */
+function makeFBO(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fb, tex, w, h };
+}
+let FB = { scene: null, a: null, b: null };
+
+/* ---------- viewport ---------------------------------------- */
+let VW = 480, VH = 540, scale = 1, dpr = 1, ox = 0, oy = 0, CW = 1, CH = 1;
+function resize() {
+  const r = glc.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  VH = 540;
+  VW = Math.round(clamp(VH * (w / h), 380, 1400));
+  scale = Math.min(w / VW, h / VH);
+  ox = (w - VW * scale) / 2; oy = (h - VH * scale) / 2;
+  CW = Math.round(w * dpr); CH = Math.round(h * dpr);
+  glc.width = CW; glc.height = CH;
+  uic.width = CW; uic.height = CH;
+
+  const bw = Math.max(1, CW >> 1), bh = Math.max(1, CH >> 1);
+  FB.scene = makeFBO(CW, CH);
+  FB.a = makeFBO(bw, bh);
+  FB.b = makeFBO(bw, bh);
+}
+addEventListener("resize", resize);
+addEventListener("orientationchange", () => setTimeout(resize, 120));
+if (window.ResizeObserver) new ResizeObserver(() => resize()).observe(glc);
+
+/* ============================================================
+   SOUND — filtered noise and sub-bass, not chiptune blips
+   ============================================================ */
+const Snd = {
+  ctx: null, on: true, noise: null, bus: null,
+  init() {
+    if (this.ctx) return;
+    try { this.ctx = new (AudioContext || webkitAudioContext)(); } catch (e) { return; }
+    this.bus = this.ctx.createGain();
+    this.bus.gain.value = 0.85;
+    this.bus.connect(this.ctx.destination);
+    const len = this.ctx.sampleRate * 0.6;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = buf;
+  },
+  resume() { if (this.ctx && this.ctx.state === "suspended") this.ctx.resume(); },
+  /* detuned pair through a lowpass, long tail */
+  tone(f, dur, vol, type = "sine", slide = 0, cutoff = 2600, q = 1) {
+    if (!this.on || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const g = this.ctx.createGain(), fl = this.ctx.createBiquadFilter();
+    fl.type = "lowpass"; fl.frequency.value = cutoff; fl.Q.value = q;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    for (const det of [0, 6]) {
+      const o = this.ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f + det, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t + dur * 0.9);
+      o.connect(fl); o.start(t); o.stop(t + dur + 0.03);
+    }
+    fl.connect(g); g.connect(this.bus);
+  },
+  hiss(dur, vol, cutoff, sweep) {
+    if (!this.on || !this.ctx || !this.noise) return;
+    const t = this.ctx.currentTime;
+    const s = this.ctx.createBufferSource(); s.buffer = this.noise;
+    const fl = this.ctx.createBiquadFilter(); fl.type = "bandpass";
+    fl.frequency.setValueAtTime(cutoff, t);
+    if (sweep) fl.frequency.exponentialRampToValueAtTime(Math.max(80, cutoff + sweep), t + dur);
+    fl.Q.value = 1.4;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(fl); fl.connect(g); g.connect(this.bus);
+    s.start(t); s.stop(t + dur + 0.02);
+  },
+  tap()      { this.hiss(0.09, 0.10, 1500, -900); this.tone(120, 0.13, 0.14, "sine", -40, 500); },
+  pass(n)    { const sc = [0,3,5,7,10]; const st = sc[n % 5] + 12 * Math.floor((n % 15) / 5);
+               this.tone(220 * Math.pow(2, st / 12), 0.5, 0.10, "sine", 0, 2200, 0.8); },
+  near()     { this.tone(1400, 0.16, 0.07, "sine", -500, 4000); this.hiss(0.14, 0.05, 3800, -1800); },
+  swap()     { this.hiss(0.24, 0.07, 500, 2600); this.tone(330, 0.3, 0.07, "triangle", 220, 1800); },
+  die()      { this.tone(70, 1.0, 0.22, "sine", -45, 380, 1.2); this.hiss(0.5, 0.14, 900, -700); },
+  best()     { [0,4,7,12].forEach((s,i)=>setTimeout(()=>this.tone(330*Math.pow(2,s/12),0.6,0.09,"sine",0,2600),i*95)); }
+};
+
+/* ---------- input ------------------------------------------- */
+const In = { tap: false, pos: null, ptrs: new Map(), confirm: false };
+addEventListener("keydown", e => {
+  if (["Space","ArrowUp","Enter","KeyM"].includes(e.code)) e.preventDefault();
+  if (e.repeat) return;
+  if (e.code === "Space" || e.code === "ArrowUp") In.tap = true;
+  if (e.code === "Enter") In.confirm = true;
+  if (e.code === "KeyM") Snd.on = !Snd.on;
+  Snd.init(); Snd.resume();
+});
+const ptPos = e => {
+  const r = glc.getBoundingClientRect();
+  return { x: (e.clientX - r.left - ox) / scale, y: (e.clientY - r.top - oy) / scale };
+};
+glc.addEventListener("pointerdown", e => {
+  const p = ptPos(e);
+  In.ptrs.set(e.pointerId, p); In.tap = true; In.pos = p;
+  Snd.init(); Snd.resume();
+  try { glc.setPointerCapture(e.pointerId); } catch (err) {}
+});
+glc.addEventListener("pointermove", e => { if (In.ptrs.has(e.pointerId)) In.ptrs.set(e.pointerId, ptPos(e)); });
+const endP = e => In.ptrs.delete(e.pointerId);
+glc.addEventListener("pointerup", endP);
+glc.addEventListener("pointercancel", endP);
+glc.addEventListener("contextmenu", e => e.preventDefault());
+
+/* ---------- save -------------------------------------------- */
+const KEY = "pulse.v2";
+let Save = { best: 0, plays: 0, clientId: "" };
+try { Object.assign(Save, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) {}
+if (!Save.clientId) Save.clientId = "c-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(Save)); } catch (e) {} };
+persist();
+
+const QS = new URLSearchParams(location.search || location.hash.replace(/^#/, ""));
+
+/* ============================================================
+   GAME
+   ============================================================ */
+const GRAV = 1500, HOP = -545, BR = 12;
+const G = {
+  state: "title", t: 0, st: 0, timeScale: 1, slow: 0,
+  camY: 0, score: 0, passed: 0, shake: 0, flash: 0, aberr: 0,
+  ball: null, rings: [], swaps: [], parts: [], waves: [], streaks: [],
+  spawnY: 0, newBest: false, reason: "",
+
+  reset() {
+    this.score = 0; this.passed = 0; this.newBest = false;
+    this.rings = []; this.swaps = []; this.parts = []; this.waves = []; this.streaks = [];
+    this.timeScale = 1; this.slow = 0; this.flash = 0; this.aberr = 0;
+    this.ball = { y: 0, vy: 0, id: 0, rot: 0, trail: [] };
+    this.camY = -VH * 0.62;
+    this.spawnY = 150;
+    for (let i = 0; i < 6; i++) this.spawn();
+  },
+
+  spawn() {
+    const diff = clamp(this.passed / 32, 0, 1);
+    this.spawnY -= lerp(410, 312, diff);
+    const y = this.spawnY;
+    const R = lerp(122, 100, diff);
+    const spd = (0.5 + diff * 0.8) * (Math.random() < 0.5 ? 1 : -1);
+    const roll = Math.random();
+    let kind = "ring";
+    if (this.passed > 4 && roll > 0.84) kind = "dual";
+    else if (this.passed > 9 && roll > 0.66) kind = "prop";
+    else if (this.passed > 14 && roll > 0.52) kind = "breathe";
+
+    const mk = (r, s, o, lead) => ({ y, r, rot: rnd(0, TAU), spd: s, order: o, th: 11, passed: false, lead, ph: rnd(0, TAU), kind });
+    if (kind === "dual") {
+      this.rings.push(mk(R + 36, spd * 0.75, order4(), true));
+      this.rings.push(mk(R - 28, -spd * 1.2, order4(), false));
+    } else {
+      this.rings.push(mk(kind === "prop" ? R + 10 : R, spd, order4(), true));
+    }
+    if (Math.random() < 0.78) this.swaps.push({ y: y + lerp(410, 312, diff) * 0.5, got: false, ph: rnd(0, TAU) });
+  },
+
+  start() { this.reset(); this.setState("play"); },
+  setState(s) { this.state = s; this.st = 0; },
+
+  die(reason) {
+    if (this.state !== "play") return;
+    this.reason = reason;
+    this.shake = 26; this.flash = 0.55; this.aberr = 0.03;
+    this.timeScale = 0.25; this.slow = 0.9;
+    Snd.die();
+    const c = IDS[this.ball.id].rgb;
+    for (let i = 0; i < 46; i++) {
+      const a = rnd(0, TAU), s = rnd(60, 420);
+      this.parts.push({ x: Math.cos(a)*4, y: this.ball.y + Math.sin(a)*4, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+        life: rnd(0.4, 1.1), max: 1.1, r: rnd(1.5, 4), c });
+    }
+    this.waves.push({ y: this.ball.y, r: 6, a: 0.9, c });
+    Save.plays = (Save.plays || 0) + 1;
+    if (this.score > (Save.best || 0)) { Save.best = this.score; this.newBest = true; Snd.best(); }
+    persist();
+    this.setState("dead");
+  }
+};
+function order4() {
+  const a = [0,1,2,3];
+  for (let i = 3; i > 0; i--) { const j = (Math.random() * (i+1)) | 0; [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+const ringR = r => r.kind === "breathe" ? r.r + Math.sin(r.ph) * 24 : r.r;
+function segAt(r, ang) {
+  let a = (((ang - r.rot) % TAU) + TAU) % TAU;
+  const q = TAU / 4;
+  if (r.kind === "prop") {
+    const s = Math.floor(a / q);
+    return (a - s * q) < q * 0.6 ? s : -1;
+  }
+  return Math.floor(a / q);
+}
+
+/* ============================================================
+   UPDATE
+   ============================================================ */
+function step(dt) {
+  const b = G.ball;
+
+  if (In.tap) {
+    In.tap = false;
+    b.vy = HOP;
+    Snd.tap();
+    G.waves.push({ y: b.y, r: 4, a: 0.5, c: IDS[b.id].rgb });
+    for (let i = 0; i < 5; i++)
+      G.streaks.push({ x: rnd(-26, 26), y: b.y + rnd(4, 20), len: rnd(14, 40), a: 0.5, c: IDS[b.id].rgb });
+  }
+
+  b.vy += GRAV * dt;
+  b.vy = clamp(b.vy, HOP * 1.7, 940);
+  b.y += b.vy * dt;
+  b.rot += dt * 1.4;
+  b.trail.unshift(b.y);
+  if (b.trail.length > 18) b.trail.pop();
+
+  G.camY = Math.min(G.camY, b.y - VH * 0.62);
+  if (b.y > G.camY + VH + 70) { G.die("fell"); return; }
+
+  for (const r of G.rings) {
+    r.rot += r.spd * dt;
+    if (r.kind === "breathe") r.ph += dt * 1.5;
+
+    const rad = ringR(r);
+    const d = Math.abs(b.y - r.y);
+    if (Math.abs(d - rad) < r.th / 2 + BR) {
+      const ang = b.y < r.y ? -Math.PI / 2 : Math.PI / 2;
+      const s = segAt(r, ang);
+      if (s !== -1 && r.order[s] !== b.id) { G.die("mismatch"); return; }
+      /* how near the edge of the safe arc — the basis for the slow-mo */
+      if (s !== -1 && !r.near) {
+        const q = TAU / 4;
+        let a = (((ang - r.rot) % TAU) + TAU) % TAU;
+        const edge = Math.min(a - s * q, (s + 1) * q - a);
+        if (edge < 0.22) {
+          r.near = true;
+          G.timeScale = 0.35; G.slow = 0.34; G.flash = 0.14;
+          Snd.near();
+        }
+      }
+    }
+    if (!r.passed && r.lead && b.y < r.y - rad - BR) {
+      r.passed = true; G.passed++; G.score++;
+      Snd.pass(G.passed);
+      G.waves.push({ y: r.y, r: rad * 0.35, a: 0.55, c: IDS[b.id].rgb });
+      G.flash = Math.max(G.flash, 0.07);
+    }
+  }
+
+  for (const s of G.swaps) {
+    if (s.got) continue;
+    s.ph += dt * 2.4;
+    if (Math.abs(b.y - s.y) < BR + 16) {
+      s.got = true;
+      let id = b.id;
+      while (id === b.id) id = (Math.random() * 4) | 0;
+      b.id = id;
+      Snd.swap();
+      G.flash = Math.max(G.flash, 0.10);
+      const c = IDS[id].rgb;
+      for (let i = 0; i < 16; i++) {
+        const a = rnd(0, TAU), sp = rnd(40, 200);
+        G.parts.push({ x: Math.cos(a)*6, y: s.y + Math.sin(a)*6, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
+          life: rnd(0.25, 0.6), max: 0.6, r: rnd(1, 2.6), c });
+      }
+      G.waves.push({ y: s.y, r: 8, a: 0.7, c });
+    }
+  }
+
+  while (G.spawnY > G.camY - VH * 1.6) G.spawn();
+  const cut = G.camY + VH + 420;
+  G.rings = G.rings.filter(r => r.y < cut);
+  G.swaps = G.swaps.filter(s => s.y < cut);
+}
+
+function fx(dt) {
+  for (let i = G.parts.length - 1; i >= 0; i--) {
+    const p = G.parts[i];
+    p.life -= dt;
+    if (p.life <= 0) { G.parts.splice(i, 1); continue; }
+    p.vy += 520 * dt; p.vx *= 0.985;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  for (let i = G.waves.length - 1; i >= 0; i--) {
+    const w = G.waves[i];
+    w.r += 340 * dt; w.a -= 1.5 * dt;
+    if (w.a <= 0) G.waves.splice(i, 1);
+  }
+  for (let i = G.streaks.length - 1; i >= 0; i--) {
+    const s = G.streaks[i];
+    s.y += 320 * dt; s.a -= 2.4 * dt;
+    if (s.a <= 0) G.streaks.splice(i, 1);
+  }
+  G.shake = Math.max(0, G.shake - dt * 70);
+  G.flash = Math.max(0, G.flash - dt * 1.9);
+  G.aberr = Math.max(0.0016, G.aberr - dt * 0.06);
+  if (G.slow > 0) { G.slow -= dt; if (G.slow <= 0) G.timeScale = 1; }
+  else G.timeScale = lerp(G.timeScale, 1, Math.min(1, dt * 6));
+}
+
+/* ============================================================
+   SCENE
+   ============================================================ */
+function buildScene() {
+  vn = 0;
+  const cx = VW / 2;
+  let sx = 0, sy = 0;
+  if (G.shake > 0.01) { sx = rnd(-G.shake, G.shake); sy = rnd(-G.shake, G.shake); }
+  const oy2 = -G.camY + sy;
+
+  /* deep field glow rising from the floor of the screen */
+  for (let i = 0; i < 3; i++)
+    halo(cx + sx, VH + 60, 300 + i * 130, PAL.deep, 0.30 - i * 0.08, 34);
+
+  if (!REDUCED) {
+    /* slow ambient rings, barely there */
+    for (let i = 0; i < 5; i++) {
+      const y = (((i * 421 - G.camY * 0.10) % 1100) + 1100) % 1100 - 300;
+      arc(cx + sx + ((i * 173) % 300 - 150), y + sy, 120 + i * 42, 1.2, 0, TAU, PAL.deep, 0.30);
+    }
+  }
+
+  for (const s of G.streaks)
+    seg(cx + s.x + sx, s.y + oy2, cx + s.x + sx, s.y + s.len + oy2, 1.6, s.c, s.a * 0.5);
+
+  for (const w of G.waves) {
+    arc(cx + sx, w.y + oy2, w.r, 2.4, 0, TAU, w.c, clamp(w.a, 0, 1) * 0.5);
+    arc(cx + sx, w.y + oy2, w.r * 0.72, 1.2, 0, TAU, w.c, clamp(w.a, 0, 1) * 0.25);
+  }
+
+  for (const s of G.swaps) {
+    if (s.got) continue;
+    const y = s.y + oy2, p = 1 + Math.sin(s.ph) * 0.1;
+    for (let i = 0; i < 4; i++)
+      patArc(cx + sx, y, 15 * p, 4, i * TAU/4 + s.ph * 0.5, (i+1) * TAU/4 + s.ph * 0.5 - 0.2, i, 0.95);
+    halo(cx + sx, y, 30, [1,1,1], 0.16);
+    disc(cx + sx, y, 2.6, [1,1,1], 1);
+  }
+
+  for (const r of G.rings) {
+    const y = r.y + oy2, rad = ringR(r), q = TAU / 4;
+    const span = r.kind === "prop" ? q * 0.6 : q;
+    arc(cx + sx, y, rad, 0.8, 0, TAU, PAL.deep, 0.5);
+    for (let i = 0; i < 4; i++) {
+      const from = r.rot + i * q;
+      patArc(cx + sx, y, rad, r.th, from, from + span, r.order[i], 0.95);
+    }
+  }
+
+  const b = G.ball;
+  if (b) {
+    const c = IDS[b.id].rgb;
+    for (let i = b.trail.length - 1; i > 0; i--) {
+      const k = 1 - i / b.trail.length;
+      disc(cx + sx, b.trail[i] + oy2, BR * k * 0.7, c, k * 0.16, 12);
+    }
+    const y = b.y + oy2;
+    halo(cx + sx, y, 54, c, 0.32);
+    /* the identity ring, in its own pattern */
+    for (let i = 0; i < 4; i++)
+      patArc(cx + sx, y, BR + 7, 3.4, b.rot + i * TAU/4 + 0.12, b.rot + (i+1) * TAU/4 - 0.12, b.id, 0.9);
+    disc(cx + sx, y, BR, [1,1,1], 0.95);
+    disc(cx + sx, y, BR * 0.55, c, 1);
+  }
+
+  for (const p of G.parts) {
+    const a = clamp(p.life / p.max, 0, 1);
+    disc(cx + p.x + sx, p.y + oy2, p.r, p.c, a * 0.9, 8);
+  }
+}
+
+/* ---------- draw -------------------------------------------- */
+function render() {
+  buildScene();
+  gl.bindVertexArray(sceneVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, sceneBuf);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, verts, 0, vn * 6);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.scene.fb);
+  gl.viewport(0, 0, CW, CH);
+  gl.clearColor(PAL.void[0], PAL.void[1], PAL.void[2], 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);              /* additive: light stacks */
+  gl.useProgram(pScene);
+  gl.uniform2f(uS.uScale, scale * dpr, scale * dpr);
+  gl.uniform2f(uS.uOffset, ox * dpr, oy * dpr);
+  gl.uniform2f(uS.uView, CW, CH);
+  gl.drawArrays(gl.TRIANGLES, 0, vn);
+  gl.disable(gl.BLEND);
+
+  gl.bindVertexArray(quadVAO);
+  /* bright pass */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FB.a.fb);
+  gl.viewport(0, 0, FB.a.w, FB.a.h);
+  gl.useProgram(pBright);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.scene.tex);
+  gl.uniform1i(uBr.uTex, 0); gl.uniform1f(uBr.uThresh, 0.34);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  /* two separable blur passes */
+  gl.useProgram(pBlur);
+  for (let i = 0; i < 2; i++) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.b.fb);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.a.tex);
+    gl.uniform1i(uBl.uTex, 0);
+    gl.uniform2f(uBl.uDir, 1 / FB.a.w, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FB.a.fb);
+    gl.bindTexture(gl.TEXTURE_2D, FB.b.tex);
+    gl.uniform2f(uBl.uDir, 0, 1 / FB.a.h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /* composite */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, CW, CH);
+  gl.useProgram(pComp);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, FB.scene.tex);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, FB.a.tex);
+  gl.uniform1i(uC.uScene, 0); gl.uniform1i(uC.uBloom, 1);
+  gl.uniform1f(uC.uBloomAmt, 1.15);
+  gl.uniform1f(uC.uAberr, G.aberr);
+  gl.uniform1f(uC.uTime, G.t);
+  gl.uniform1f(uC.uFlash, G.flash * 0.5);
+  gl.uniform1f(uC.uVig, 0.55);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindVertexArray(null);
+}
+
+/* ============================================================
+   UI — thin, uppercase, wide-tracked. Editorial, not chunky.
+   ============================================================ */
+function tracked(txt, x, y, size, weight, col, track, align) {
+  ui.font = `${weight} ${size}px ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif`;
+  const ch = [...txt];
+  let w = -track;
+  for (const c of ch) w += ui.measureText(c).width + track;
+  let sx = align === "center" ? x - w / 2 : align === "right" ? x - w : x;
+  ui.fillStyle = col;
+  for (const c of ch) { ui.fillText(c, sx, y); sx += ui.measureText(c).width + track; }
+  return w;
+}
+function uiBtn(label, y, w, h) {
+  const x = VW / 2 - w / 2;
+  let hot = false;
+  for (const p of In.ptrs.values()) if (p.x > x && p.x < x+w && p.y > y-h/2 && p.y < y+h/2) hot = true;
+  ui.save();
+  ui.strokeStyle = hot ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.32)";
+  ui.lineWidth = 1;
+  ui.beginPath(); ui.rect(x, y - h/2, w, h); ui.stroke();
+  tracked(label, VW/2, y + 4, 12, 500, hot ? "#fff" : "rgba(255,255,255,0.8)", 3.2, "center");
+  ui.restore();
+  return { x, y: y - h/2, w, h };
+}
+const hit = r => In.tap && In.pos && In.pos.x > r.x && In.pos.x < r.x+r.w && In.pos.y > r.y && In.pos.y < r.y+r.h;
+
+function drawUI() {
+  ui.setTransform(1, 0, 0, 1, 0, 0);
+  ui.clearRect(0, 0, CW, CH);
+  ui.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr);
+  ui.save();
+  ui.textAlign = "left"; ui.textBaseline = "alphabetic";
+
+  /* the attract scene keeps playing behind the title, so knock it back */
+  if (G.state === "title") {
+    ui.fillStyle = "rgba(5,7,13,0.62)";
+    ui.fillRect(-ox / scale, -oy / scale, VW + (ox * 2) / scale, VH + (oy * 2) / scale);
+  }
+
+  if (G.state === "play" || G.state === "dead") {
+    ui.font = "200 68px ui-sans-serif,system-ui,sans-serif";
+    ui.textAlign = "center";
+    ui.fillStyle = "rgba(255,255,255,0.94)";
+    ui.fillText(String(G.score), VW/2, 78);
+    ui.textAlign = "left";
+    tracked("BEST " + (Save.best||0), VW/2, 98, 9, 400, "rgba(255,255,255,0.32)", 3, "center");
+    const P = IDS[G.ball.id];
+    tracked(P.name, 26, 34, 9, 500, css(P.rgb), 3.4, "left");
+    tracked(P.pat.toUpperCase(), 26, 48, 8, 400, "rgba(255,255,255,0.26)", 2.6, "left");
+  }
+
+  if (G.state === "title") {
+    ui.textAlign = "center";
+    ui.font = "200 74px ui-sans-serif,system-ui,sans-serif";
+    ui.fillStyle = "rgba(255,255,255,0.96)";
+    ui.fillText("PULSE", VW/2, VH*0.42);
+    ui.textAlign = "left";
+    tracked("ONE TAP — KEEP RISING", VW/2, VH*0.42 + 26, 9, 400, "rgba(255,255,255,0.42)", 4.5, "center");
+    tracked("PASS ONLY THROUGH YOUR OWN COLOUR", VW/2, VH*0.60, 8, 400, "rgba(255,255,255,0.30)", 3.6, "center");
+    const b = uiBtn("BEGIN", VH*0.74, 168, 40);
+    tracked("NOVO NORDISK", VW/2, VH - 26, 8, 400, "rgba(255,255,255,0.20)", 4, "center");
+    if (hit(b) || In.confirm || In.tap) { In.tap = false; In.confirm = false; G.start(); }
+  }
+
+  if (G.state === "dead" && G.st > 0.45) {
+    ui.save();
+    ui.globalAlpha = clamp((G.st - 0.45) * 2.2, 0, 1);
+    ui.fillStyle = "rgba(5,7,13,0.72)";
+    ui.fillRect(0, 0, VW, VH);
+    ui.textAlign = "left";
+    tracked(G.newBest ? "NEW BEST" : (G.reason === "fell" ? "DROPPED" : "MISMATCH"),
+      VW/2, VH*0.33, 10, 500, G.newBest ? "#fff" : "rgba(255,255,255,0.5)", 5, "center");
+    ui.textAlign = "center";
+    ui.font = "200 92px ui-sans-serif,system-ui,sans-serif";
+    ui.fillStyle = "#fff";
+    ui.fillText(String(G.score), VW/2, VH*0.47);
+    ui.textAlign = "left";
+    tracked(`${G.passed} RINGS   ·   BEST ${Save.best||0}`, VW/2, VH*0.53, 9, 400, "rgba(255,255,255,0.34)", 3.4, "center");
+    tracked("SOME THINGS ARE WORTH THE WAIT", VW/2, VH*0.63, 9, 400, "rgba(255,255,255,0.55)", 4, "center");
+    tracked("YOUR HEALTH ISN'T", VW/2, VH*0.63 + 17, 9, 500, "#fff", 4, "center");
+    tracked("NOVONORDISK.COM", VW/2, VH*0.63 + 40, 7.5, 400, "rgba(255,255,255,0.28)", 3.4, "center");
+    const r = uiBtn("AGAIN", VH*0.83, 168, 40);
+    ui.restore();
+    if (hit(r) || In.confirm || In.tap) { In.tap = false; In.confirm = false; G.start(); }
+  }
+  ui.restore();
+}
+
+/* ============================================================
+   LOOP
+   ============================================================ */
+let last = performance.now(), acc = 0;
+const STEP = 1/120;
+function frame(now) {
+  const raw = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  G.t += raw; G.st += raw;
+
+  if (G.state === "play") {
+    acc += raw * G.timeScale;
+    let n = 0;
+    while (acc >= STEP && n < 8) { step(STEP); acc -= STEP; n++; if (G.state !== "play") break; }
+  } else acc = 0;
+
+  fx(raw * (G.state === "dead" ? G.timeScale : 1));
+  render();
+  drawUI();
+
+  In.tap = false; In.pos = null; In.confirm = false;
+  requestAnimationFrame(frame);
+}
+
+resize();
+G.reset();
+if (QS.get("play")) G.start();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

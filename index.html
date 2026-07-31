@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070d">
+<title>RIPPLE — prototypes</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --void:#05070d; --deep:#0a1830; --edge:#4de1ff; --dim:#7f93b3; --white:#eaf4ff;
+  }
+  html,body{min-height:100%;background:var(--void);color:var(--white);
+    font:300 15px/1.7 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  /* the brief says: when it feels like too many circles, you're on the right track */
+  body::before{content:"";position:fixed;inset:-30%;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(circle at 18% 22%, rgba(77,225,255,.055) 0 22%, transparent 22.4%),
+      radial-gradient(circle at 18% 22%, rgba(77,225,255,.045) 0 15%, transparent 15.3%),
+      radial-gradient(circle at 18% 22%, rgba(77,225,255,.06) 0 8%,  transparent 8.3%),
+      radial-gradient(circle at 82% 68%, rgba(77,225,255,.05) 0 26%, transparent 26.3%),
+      radial-gradient(circle at 82% 68%, rgba(77,225,255,.04) 0 18%, transparent 18.3%),
+      radial-gradient(circle at 82% 68%, rgba(77,225,255,.05) 0 10%, transparent 10.3%),
+      radial-gradient(circle at 52% 108%, rgba(13,99,207,.16) 0 40%, transparent 60%);
+    animation:drift 34s ease-in-out infinite alternate}
+  @keyframes drift{to{transform:translate3d(2%, -2%, 0) rotate(4deg)}}
+  @media (prefers-reduced-motion:reduce){body::before{animation:none}}
+
+  .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:56px 24px 72px}
+  .eyebrow{font-size:10px;letter-spacing:.42em;color:var(--edge);font-weight:500;margin-bottom:18px}
+  h1{font-size:clamp(38px,7vw,62px);font-weight:200;letter-spacing:.02em;line-height:1}
+  .sub{color:var(--dim);font-size:14px;margin-top:12px;max-width:52ch}
+  .rule{height:1px;background:linear-gradient(90deg,rgba(77,225,255,.4),transparent);margin:38px 0 30px}
+
+  .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+  a.card{display:flex;gap:18px;align-items:flex-start;text-decoration:none;color:inherit;
+    border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:20px;
+    background:rgba(255,255,255,.018);transition:border-color .18s,background .18s,transform .12s}
+  a.card:hover{border-color:rgba(77,225,255,.55);background:rgba(77,225,255,.045)}
+  a.card:active{transform:scale(.995)}
+  a.card:focus-visible{outline:2px solid var(--edge);outline-offset:3px}
+
+  /* every marker is concentric rings — the brand device, repeated */
+  .mark{flex:none;width:52px;height:52px;position:relative}
+  .mark i{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(77,225,255,.55)}
+  .mark i:nth-child(2){inset:8px;opacity:.75}
+  .mark i:nth-child(3){inset:16px;opacity:.55}
+  .mark i:nth-child(4){inset:23px;background:var(--edge);border:0;opacity:.9}
+  a.card:hover .mark i{border-color:var(--edge)}
+
+  .nm{font-size:15px;font-weight:500;letter-spacing:.10em}
+  .tag{display:inline-block;font-size:9px;letter-spacing:.18em;color:var(--edge);
+    border:1px solid rgba(77,225,255,.35);border-radius:20px;padding:2px 9px;margin-left:8px;vertical-align:2px}
+  .tag.old{color:var(--dim);border-color:rgba(255,255,255,.18)}
+  .ds{color:var(--dim);font-size:13px;margin-top:7px}
+  .meta{color:#55657f;font-size:11px;margin-top:9px;letter-spacing:.06em}
+
+  h2{font-size:11px;letter-spacing:.34em;color:var(--dim);font-weight:500;margin:42px 0 16px}
+  .note{color:#55657f;font-size:12px;margin-top:34px;max-width:70ch;line-height:1.9}
+  .note b{color:var(--dim);font-weight:500}
+  footer{margin-top:52px;color:#3f4c61;font-size:10px;letter-spacing:.28em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">NOVO NORDISK · GAMESCOM 2026</div>
+  <h1>Prototypes</h1>
+  <p class="sub">Every playable build, in one place. All single-file, no dependencies, no install.
+     Landscape on a phone unless noted.</p>
+  <div class="rule"></div>
+
+  <h2>CURRENT</h2>
+  <div class="grid">
+    <a class="card" href="ripple/">
+      <span class="mark"><i></i><i></i><i></i><i></i></span>
+      <span>
+        <span class="nm">RIPPLE<span class="tag">CLIENT BUILD</span></span>
+        <span class="ds">The platformer. Ripple dormant rings into a bridge, then move before it fades.
+          Four stages, a boss, a 90-second Daily Run and a leaderboard.</span>
+        <span class="meta">Canvas 2D · 96 KB · the link already shared with the client</span>
+      </span>
+    </a>
+
+    <a class="card" href="ripple-neon/">
+      <span class="mark"><i></i><i></i><i></i><i></i></span>
+      <span>
+        <span class="nm">RIPPLE<span class="tag">NEON</span></span>
+        <span class="ds">Same game, same physics, same levels. Rebuilt renderer: real bloom,
+          chromatic aberration, no faces anywhere.</span>
+        <span class="meta">WebGL2 · 84 KB · art-direction study</span>
+      </span>
+    </a>
+
+    <a class="card" href="pulse/">
+      <span class="mark"><i></i><i></i><i></i><i></i></span>
+      <span>
+        <span class="nm">PULSE<span class="tag">NEON</span></span>
+        <span class="ds">One tap to rise. You may only pass through the arc of a rotating ring that
+          matches your colour. Plays in portrait or landscape.</span>
+        <span class="meta">WebGL2 · 31 KB · colour + pattern, so it works without colour vision</span>
+      </span>
+    </a>
+  </div>
+
+  <h2>EARLIER</h2>
+  <div class="grid">
+    <a class="card" href="pulse-v1/">
+      <span class="mark"><i></i><i></i><i></i><i></i></span>
+      <span>
+        <span class="nm">PULSE<span class="tag old">V1</span></span>
+        <span class="ds">The first pass, before the art direction changed. Kept for comparison.</span>
+        <span class="meta">Canvas 2D · 26 KB</span>
+      </span>
+    </a>
+
+    <a class="card" href="bolt/">
+      <span class="mark"><i></i><i></i><i></i><i></i></span>
+      <span>
+        <span class="nm">BOLT<span class="tag old">UNBRANDED</span></span>
+        <span class="ds">The genre proof built before the brand went on — a physics platformer with
+          seesaws, hazards and a boss. Where the engine came from.</span>
+        <span class="meta">Canvas 2D · 68 KB</span>
+      </span>
+    </a>
+  </div>
+
+  <p class="note">
+    <b>Warps for demos.</b> Add to any RIPPLE link: <b>#run=1</b> jumps straight into a Daily Run,
+    <b>#board=1</b> opens the leaderboard, <b>#stage=3&amp;x=1500</b> drops you at a chosen point in a
+    stage. PULSE takes <b>?play=1</b> to skip the intro.<br><br>
+    <b>Still placeholders.</b> Logo, exact brand blues and the typeface are all standing in until the
+    guidelines pack arrives. Nothing here is an official brand asset.
+  </p>
+
+  <footer>PROTOTYPES · NOT FOR PUBLIC DISTRIBUTION</footer>
+</div>
+</body>
+</html>
