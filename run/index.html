@@ -3,20 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#05070d">
+<meta name="theme-color" content="#010f3c">
 <title>RUN</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;overflow:hidden;background:#05070d;
+  html,body{width:100%;height:100dvh;overflow:hidden;background:#010f3c;
     -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none}
   canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
   #ui{pointer-events:none}
+  /* measured at runtime to keep the HUD out from under the notch and the
+     home indicator — env() is not readable from script any other way */
+  #sa{position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;visibility:hidden;
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
   #fb{position:fixed;inset:0;display:none;place-items:center;background:#05070d;
     color:#8fa6c8;font:300 13px/1.8 system-ui,sans-serif;letter-spacing:.2em;text-align:center;padding:32px}
 </style>
 </head>
 <body>
 <canvas id="gl"></canvas><canvas id="ui"></canvas>
+<div id="sa"></div>
 <div id="fb">WEBGL2 REQUIRED</div>
 <script>
 (() => {
@@ -212,30 +217,63 @@ function mkFBO(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);return{f,t,w,h};}
 let FB={s:null,a:null,b:null};
 const COL=420;
-let VW=COL,VH=900,scale=1,dpr=1,ox=0,oy=0,CW=1,CH=1;
+const saEl=document.getElementById("sa");
+const TOUCH=matchMedia("(pointer:coarse)").matches;
+let VW=COL,VH=900,scale=1,dpr=1,ox=0,oy=0,CW=1,CH=1,UW=1,UH=1;
+let SAT=0,SAB=0;                 /* safe-area insets, in play-column units */
+let RS=1;                        /* adaptive render scale, driven by frame time */
+let RSPIN=false;                 /* ?q=low|high pins it, for testing on a real handset */
+let PORTRAIT=true;
+
+/* The old framebuffers used to be abandoned here rather than deleted. On a
+   phone that is not a slow leak: the URL bar sliding in and out fires resize
+   again and again, and each call was orphaning three GPU textures. */
+function freeFBO(){
+  for(const k of ["s","a","b"]){
+    const F=FB[k]; if(!F)continue;
+    gl.deleteTexture(F.t); gl.deleteFramebuffer(F.f); FB[k]=null;
+  }
+}
+function allocFBO(){
+  freeFBO();
+  FB.s=mkFBO(CW,CH);
+  const sh=RS<1?2:1;             /* blur at quarter-res once quality drops */
+  const bw=Math.max(1,CW>>sh), bh=Math.max(1,CH>>sh);
+  FB.a=mkFBO(bw,bh); FB.b=mkFBO(bw,bh);
+}
+
 function resize(){
   const r=glc.getBoundingClientRect();
   const w=Math.max(1,Math.round(r.width)),h=Math.max(1,Math.round(r.height));
   dpr=Math.min(devicePixelRatio||1,2);
+  PORTRAIT=h>=w*1.05;
   VW=COL; VH=Math.round(clamp(VW*(h/w),560,1500));
   scale=Math.min(w/VW,h/VH); ox=(w-VW*scale)/2; oy=(h-VH*scale)/2;
-  CW=Math.round(w*dpr);CH=Math.round(h*dpr);
-  glc.width=CW;glc.height=CH;uic.width=CW;uic.height=CH;
-  FB.s=mkFBO(CW,CH);
-  FB.a=mkFBO(Math.max(1,CW>>1),Math.max(1,CH>>1));
-  FB.b=mkFBO(Math.max(1,CW>>1),Math.max(1,CH>>1));
+
+  const cs=getComputedStyle(saEl);
+  SAT=(parseFloat(cs.paddingTop)||0)/scale;
+  SAB=(parseFloat(cs.paddingBottom)||0)/scale;
+
+  const uw=Math.round(w*dpr), uh=Math.round(h*dpr);
+  if(uw!==UW||uh!==UH){UW=uw;UH=uh;uic.width=UW;uic.height=UH;}
+
+  const gs=dpr*RS;
+  const cw=Math.max(1,Math.round(w*gs)), ch=Math.max(1,Math.round(h*gs));
+  if(cw!==CW||ch!==CH){CW=cw;CH=ch;glc.width=CW;glc.height=CH;allocFBO();}
 }
+const GS=()=>dpr*RS;
 addEventListener("resize",resize);
-addEventListener("orientationchange",()=>setTimeout(resize,120));
+addEventListener("orientationchange",()=>setTimeout(resize,150));
 if(window.ResizeObserver)new ResizeObserver(()=>resize()).observe(glc);
 
 /* ---------- sound ---------- */
 const S={ctx:null,on:true,noise:null,bus:null,
- init(){if(this.ctx)return;try{this.ctx=new (AudioContext||webkitAudioContext)();}catch(e){return;}
+ init(){if(this.ctx)return;try{this.ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return;}
   this.bus=this.ctx.createGain();this.bus.gain.value=.85;this.bus.connect(this.ctx.destination);
   const n=this.ctx.sampleRate*.6,b=this.ctx.createBuffer(1,n,this.ctx.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<n;i++)d[i]=Math.random()*2-1;this.noise=b;},
  resume(){if(this.ctx&&this.ctx.state==="suspended")this.ctx.resume();},
+ suspend(){try{this.ctx&&this.ctx.state==="running"&&this.ctx.suspend();}catch(e){}},
  tone(f,dur,vol,type="sine",slide=0,cut=2600,q=1){if(!this.on||!this.ctx)return;
   const t=this.ctx.currentTime,g=this.ctx.createGain(),fl=this.ctx.createBiquadFilter();
   fl.type="lowpass";fl.frequency.value=cut;fl.Q.value=q;
@@ -272,14 +310,14 @@ const In={tap:0,pos:null,ptrs:new Map(),confirm:false};
 addEventListener("keydown",e=>{
   if(["Space","ArrowUp","Enter","KeyM"].includes(e.code))e.preventDefault();
   if(e.repeat)return;
-  if(e.code==="Space"||e.code==="ArrowUp")In.tap++;
+  if(e.code==="Space"||e.code==="ArrowUp")In.tap=Math.min(In.tap+1,3);
   if(e.code==="Enter")In.confirm=true;
   if(e.code==="KeyM")S.on=!S.on;
   S.init();S.resume();});
 const pt=e=>{const r=glc.getBoundingClientRect();
   return{x:(e.clientX-r.left-ox)/scale,y:(e.clientY-r.top-oy)/scale};};
 glc.addEventListener("pointerdown",e=>{const p=pt(e);In.ptrs.set(e.pointerId,p);
-  In.tap++;In.pos=p;S.init();S.resume();
+  In.tap=Math.min(In.tap+1,3);In.pos=p;S.init();S.resume();
   try{glc.setPointerCapture(e.pointerId);}catch(x){}});
 glc.addEventListener("pointermove",e=>{if(In.ptrs.has(e.pointerId))In.ptrs.set(e.pointerId,pt(e));});
 const end=e=>In.ptrs.delete(e.pointerId);
@@ -401,13 +439,13 @@ const G={
     this.nextX=x+W;
   },
 
-  start(){this.reset();this.setState("play");},
+  start(){this.reset();this.setState("play");paused=false;lock();},
   setState(s){this.state=s;this.st=0;},
 
   die(reason){
     if(this.state!=="play")return;
     this.reason=reason;this.shake=26;this.flash=.5;this.aberr=.03;
-    this.ts=.25;this.slow=.9;S.die();
+    this.ts=.25;this.slow=.9;S.die();buzz(55);
     const c=IDS[this.ball.id].rgb;
     for(let i=0;i<46;i++){const a=rnd(0,TAU),sp=rnd(60,420);
       this.parts.push({x:BALL_X()+Math.cos(a)*4,y:this.ball.y+Math.sin(a)*4,
@@ -496,7 +534,7 @@ function ripple(ox,oy){
   }
 
   G.bestChain=Math.max(G.bestChain,G.chain);
-  if(G.chain>2){ G.flash=Math.max(G.flash,.10+G.chain*.02); G.ts=.55; G.slow=.22; }
+  if(G.chain>2){ G.flash=Math.max(G.flash,.10+G.chain*.02); G.ts=.55; G.slow=.22; buzz(16); }
 }
 
 /* ============================================================
@@ -760,8 +798,9 @@ function render(t){
   gl.clearColor(VOID[0],VOID[1],VOID[2],1);gl.clear(gl.COLOR_BUFFER_BIT);
   gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
   gl.useProgram(pScene);
-  gl.uniform2f(uS.uScale,scale*dpr,scale*dpr);
-  gl.uniform2f(uS.uOffset,ox*dpr,oy*dpr);
+  const gs=GS();
+  gl.uniform2f(uS.uScale,scale*gs,scale*gs);
+  gl.uniform2f(uS.uOffset,ox*gs,oy*gs);
   gl.uniform2f(uS.uView,CW,CH);
   gl.drawArrays(gl.TRIANGLES,0,vn);
   gl.disable(gl.BLEND);
@@ -808,13 +847,13 @@ function btn(label,y,w,h){
   for(const p of In.ptrs.values())if(p.x>x&&p.x<x+w&&p.y>y-h/2&&p.y<y+h/2)hot=true;
   ui.save();ui.strokeStyle=hot?"rgba(255,255,255,.85)":"rgba(255,255,255,.32)";
   ui.lineWidth=1;ui.strokeRect(x,y-h/2,w,h);
-  trk(label,VW/2,y+4,11,500,hot?"#fff":"rgba(255,255,255,.82)",3.2,"center");
+  trk(label,VW/2,y+4,12,500,hot?"#fff":"rgba(255,255,255,.82)",3.2,"center");
   ui.restore();return{x,y:y-h/2,w,h};
 }
 const hit=r=>In.tap&&In.pos&&In.pos.x>r.x&&In.pos.x<r.x+r.w&&In.pos.y>r.y&&In.pos.y<r.y+r.h;
 
 function drawUI(t){
-  ui.setTransform(1,0,0,1,0,0);ui.clearRect(0,0,CW,CH);
+  ui.setTransform(1,0,0,1,0,0);ui.clearRect(0,0,UW,UH);
   ui.setTransform(scale*dpr,0,0,scale*dpr,ox*dpr,oy*dpr);
   ui.textAlign="left";ui.textBaseline="alphabetic";
   const scrim=a=>{ui.fillStyle=`rgba(1,14,50,${a})`;
@@ -824,16 +863,16 @@ function drawUI(t){
     ui.textAlign="left";
     ui.font="300 34px ui-sans-serif,system-ui,sans-serif";
     ui.fillStyle="rgba(255,255,255,.92)";
-    ui.fillText(String(G.score),24,54);
-    trk("★ "+G.stars+"   ◎ "+G.gates+"   ~ "+G.calmed,24,72,9,400,"rgba(255,255,255,.34)",2.6,"left");
-    trk(Math.floor(G.worldX/50)+" M",24,88,8,400,"rgba(127,212,255,.40)",2.6,"left");
+    ui.fillText(String(G.score),24,54+SAT);
+    trk("★ "+G.stars+"   ◎ "+G.gates+"   ~ "+G.calmed,24,72+SAT,9,400,"rgba(255,255,255,.34)",2.6,"left");
+    trk(Math.floor(G.worldX/50)+" M",24,88+SAT,8,400,"rgba(127,212,255,.40)",2.6,"left");
     if(G.combo>1){
       ui.textAlign="left";
-      trk("×"+G.combo,24,116,15,500,"rgba(127,212,255,"+clamp(.5+G.combo*.1,0,1)+")",2.2,"left");
+      trk("×"+G.combo,24,116+SAT,15,500,"rgba(127,212,255,"+clamp(.5+G.combo*.1,0,1)+")",2.2,"left");
     }
     const P=IDS[G.ball.id];
-    trk(P.name,VW-24,36,9,500,cssOf(P.rgb),3.4,"right");
-    trk(P.pat.toUpperCase(),VW-24,50,8,400,"rgba(255,255,255,.26)",2.6,"right");
+    trk(P.name,VW-24,36+SAT,9,500,cssOf(P.rgb),3.4,"right");
+    trk(P.pat.toUpperCase(),VW-24,50+SAT,8,400,"rgba(255,255,255,.26)",2.6,"right");
   }
 
   if(G.state==="title"){
@@ -847,9 +886,22 @@ function drawUI(t){
     trk("THE RIPPLE WAKES WHAT IT REACHES,",VW/2,VH*.28+50,8,400,"rgba(255,255,255,.32)",3.2,"center");
     trk("AND WHAT IT WAKES RIPPLES ON",VW/2,VH*.28+64,8,400,"rgba(255,255,255,.32)",3.2,"center");
     trk("EACH STEP OUTWARD IS WORTH MORE THAN THE LAST",VW/2,VH*.28+84,7.5,400,"rgba(127,212,255,.38)",3.2,"center");
-    const b=btn("BEGIN",VH*.80,168,42);
-    trk("NOVO NORDISK",VW/2,VH-28,8,400,"rgba(255,255,255,.20)",4,"center");
+    const b=btn("BEGIN",VH*.78,208,56);
+    trk("NOVO NORDISK",VW/2,VH-28-SAB,8,400,"rgba(255,255,255,.20)",4,"center");
     if(hit(b)||In.confirm||In.tap){In.tap=0;In.confirm=false;G.start();}
+  }
+
+  if(G.state==="play"&&TOUCH&&!PORTRAIT){
+    scrim(.86);ui.textAlign="left";
+    trk("TURN YOUR PHONE UPRIGHT",VW/2,VH*.44,11,500,"#fff",4.4,"center");
+    trk("RUN IS PLAYED IN PORTRAIT",VW/2,VH*.44+22,8,400,"rgba(127,212,255,.5)",3.4,"center");
+  }
+  else if(G.state==="play"&&paused){
+    scrim(.88);ui.textAlign="left";
+    trk("PAUSED",VW/2,VH*.30,13,500,"#fff",6,"center");
+    trk("TAP TO CARRY ON",VW/2,VH*.30+24,8.5,400,"rgba(127,212,255,.60)",3.4,"center");
+    trk("YOUR RUN IS EXACTLY WHERE YOU LEFT IT",VW/2,VH*.30+42,7.5,400,"rgba(255,255,255,.30)",3,"center");
+    if(In.tap||In.confirm){paused=false;In.tap=0;In.confirm=false;S.resume();lock();}
   }
 
   if(G.state==="dead"&&G.st>.45){
@@ -874,19 +926,62 @@ function drawUI(t){
   }
 }
 
+/* ============================================================
+   MOBILE
+   ============================================================ */
+/* A phone interrupts constantly — a call, a notification, someone
+   being called forward in the queue. Losing a run to that is not a
+   fair loss, so the game holds rather than plays on unseen. */
+let paused=false;
+const holdOn=()=>{ if(G.state==="play"&&!paused){paused=true;S.suspend();} };
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) holdOn(); else { resize(); lock(); }
+});
+addEventListener("blur",holdOn);
+addEventListener("pagehide",holdOn);
+
+/* keep the screen awake for the length of a run */
+let wl=null;
+async function lock(){
+  try{ if("wakeLock" in navigator && G.state==="play" && !document.hidden)
+    wl=await navigator.wakeLock.request("screen"); }catch(e){}
+}
+/* haptics only for the moments that matter — a buzz per star would be
+   both irritating and a measurable drain on a phone in a queue */
+const buzz=ms=>{try{navigator.vibrate&&navigator.vibrate(ms);}catch(e){}};
+
 /* ---------- loop ---------- */
 let last=performance.now(),acc=0;const STEP=1/120;
+/* Nobody knows what half a million people will be holding. Rather than
+   guess a quality level, measure the frame time and move to meet it. */
+let ftAcc=0,ftN=0,qCool=0;
+function quality(raw){
+  ftAcc+=raw;ftN++;
+  if(qCool>0)qCool-=raw;
+  if(ftN<45)return;
+  const avg=ftAcc/ftN; ftAcc=0;ftN=0;
+  if(qCool>0||RSPIN)return;
+  if(avg>.021&&RS>.6){ RS=Math.max(.6,RS-.2); qCool=3; resize(); }        /* under ~48fps */
+  else if(avg<.0135&&RS<1){ RS=Math.min(1,RS+.2); qCool=5; resize(); }    /* comfortably over 60 */
+}
+
 function frame(now){
   const raw=Math.min(.05,(now-last)/1000);last=now;
+  quality(raw);
   G.t+=raw;G.st+=raw;
-  if(G.state==="play"){acc+=raw*G.ts;let n=0;
+  const held=(paused||(TOUCH&&!PORTRAIT))&&G.state==="play";
+  if(G.state==="play"&&!held){acc+=raw*G.ts;let n=0;
     while(acc>=STEP&&n<8){step(STEP);acc-=STEP;n++;if(G.state!=="play")break;}}
   else acc=0;
-  fx(raw*(G.state==="dead"?G.ts:1));
+  fx(held?0:raw*(G.state==="dead"?G.ts:1));
   render(G.t);drawUI(G.t);
-  In.tap=0;In.pos=null;In.confirm=false;
+  /* a tap left in the queue is drained by the next physics step, so it is
+     only cleared here when nothing is going to consume it */
+  if(G.state!=="play"||held)In.tap=0;
+  In.pos=null;In.confirm=false;
   requestAnimationFrame(frame);
 }
+if(QS.get("q")==="low"){RS=.6;RSPIN=true;} else if(QS.get("q")==="high"){RS=1;RSPIN=true;}
 resize();G.reset();
 if(QS.get("play")||QS.get("warp")||QS.get("skip"))G.start();
 requestAnimationFrame(frame);
