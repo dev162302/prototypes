@@ -139,11 +139,24 @@ function star(x,y,r,c,a,rot){
   for(let i=1;i<pts.length-1;i++)
     tri(pts[0][0],pts[0][1],pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],c,a,a,a);
 }
-/* platforms carry the ball's current identity, colour and pattern alike */
-function platform(x,y,w,id,a){
-  const P=IDS[id], c=P.rgb, th=9;
-  halo(x+w/2,y,w*.55,c,.085*a);
-  quad(x,y-th/2,x+w,y-th/2,x+w,y+th/2,x,y+th/2,c,.18*a);
+/* The reference decks are not plain bars. Each is a slab with a sawtooth
+   seam running just under the top rail, mass below it rather than a floating
+   line, and some of them rise into a solid raised plateau — the step. The
+   seam is drawn bright here rather than dark, because this renderer is
+   additive and cannot subtract light from what is underneath it. */
+const BODY=44, RAIL=9;
+
+function seam(x0,x1,y,c,a){
+  const half=5.5, amp=3.0;
+  let px=x0, py=y, i=0;
+  for(let X=x0;X<x1;X+=half){
+    const nx=Math.min(X+half,x1), ny=(i++%2)?y+amp:y-amp;
+    seg(px,py,nx,ny,1.7,c,.62*a); px=nx; py=ny;
+  }
+}
+
+function rail(x,y,w,P,c,a){
+  const th=RAIL;
   if(P.pat==="solid"){ seg(x,y,x+w,y,th,c,.82*a); }
   else if(P.pat==="dashed"){ const n=Math.max(2,Math.round(w/22));
     for(let i=0;i<n;i++){const x0=x+w*(i/n), x1=x0+w/n*.6; seg(x0,y,x1,y,th,c,.82*a);} }
@@ -151,6 +164,28 @@ function platform(x,y,w,id,a){
     for(let i=0;i<n;i++) disc(x+w*((i+.5)/n),y,th*.46,c,.82*a,10); }
   else { seg(x,y-th*.30,x+w,y-th*.30,th*.30,c,.82*a);
          seg(x,y+th*.30,x+w,y+th*.30,th*.30,c,.82*a); }
+}
+
+/* platforms carry the ball's current identity, colour and pattern alike */
+function platform(x,y,w,id,a,step){
+  const P=IDS[id], c=P.rgb;
+  /* the deck's own rail stops at the face of a plateau — additive blending
+     cannot occlude, so anything drawn under the block shows straight through */
+  const dw=step?step.x-x:w;
+  halo(x+dw/2,y,dw*.55,c,.085*a);
+  quad(x,y+RAIL/2,x+w,y+RAIL/2,x+w,y+RAIL/2+BODY,x,y+RAIL/2+BODY,c,.10*a);
+  rail(x,y,dw,P,c,a);
+  seam(x,x+dw,y+RAIL/2+5,c,a);
+
+  if(step){
+    const sxp=step.x, sw=x+w-sxp, ty=y-step.h;
+    /* the plateau is solid all the way down to the deck it rises from */
+    quad(sxp,ty+RAIL/2,x+w,ty+RAIL/2,x+w,y+RAIL/2+BODY,sxp,y+RAIL/2+BODY,c,.13*a);
+    seg(sxp,ty,sxp,y,2.2,c,.55*a);               /* the face you must clear */
+    rail(sxp,ty,sw,P,c,a);
+    seam(sxp,x+w,ty+RAIL/2+5,c,a);
+    halo(sxp+sw/2,ty,sw*.55,c,.075*a);
+  }
 }
 
 /* hazard teeth, sitting on a deck. Warm against a blue world so they read
@@ -316,15 +351,25 @@ const G={
        Testing it the other way round — gate on the width we happened to
        roll — produced 117 spike beds in 240,000 platforms, because the
        widths shrink with difficulty faster than the requirement does. */
+    /* A raised plateau on the back of the deck, as in the reference. It needs
+       120px of runway to be read and jumped, and stays under the 132px single
+       -jump apex. Never on a mover or a fading deck — too much to read at once. */
+    let step=null;
+    if(this.score>14&&type==="normal"&&Math.random()<.22){
+      const h=RI(34,84);
+      step={x:x+120,h};
+    }
+
     let spikes=null, W=w;
-    if(this.score>10&&type==="normal"&&Math.random()<.26){
+    if(!step&&this.score>10&&type==="normal"&&Math.random()<.26){
       const n=RI(2,3);
       W=Math.max(w,130+n*20+40);
       spikes={x:x+130,n};
     }
+    if(step) W=Math.max(w,120+70);          /* runway plus a landable plateau */
 
     const p={x,y,w:W,type,passed:false,baseY:y,ph:rnd(0,TAU),
-      amp:type==="mover"?rnd(VH*.045,VH*.095):0, touched:0, alpha:1, spikes};
+      amp:type==="mover"?rnd(VH*.045,VH*.095):0, touched:0, alpha:1, spikes, step};
 
     this.plats.push(p);
 
@@ -484,13 +529,16 @@ function step(dt){
     }
   }
 
+  /* with plateaus the deck no longer has one height */
+  const surfaceY=(p,bx)=>(p.step&&bx>=p.step.x-G.worldX)?p.y-p.step.h:p.y;
+
   /* A mover that rises would otherwise pass straight through the ball, and
      one that falls would leave it hanging in mid-air, so a grounded ball is
      carried with the deck it is standing on. */
   if(b.on&&b.grounded){
     const sx=b.on.x-G.worldX;
     if(BX+BR<sx||BX-BR>sx+b.on.w||b.on.alpha<=0) b.on=null;
-    else b.y=b.on.y-BR;
+    else b.y=surfaceY(b.on,BX)-BR;
   }
 
   const wasGround=b.grounded;
@@ -514,15 +562,22 @@ function step(dt){
       }
     }
 
-    if(b.vy>=0 && prevY+BR<=p.y+2 && b.y+BR>=p.y){
-      b.y=p.y-BR; b.vy=0; b.jumps=0; b.grounded=true; b.on=p;
+    /* the face of a plateau is solid: run into it and the run is over */
+    if(p.step){
+      const fx=p.step.x-G.worldX;
+      if(BX+BR>fx && BX-BR<fx+7 && b.y+BR>p.y-p.step.h+4){ G.die("blocked"); return; }
+    }
+
+    const sy0=surfaceY(p,BX);
+    if(b.vy>=0 && prevY+BR<=sy0+2 && b.y+BR>=sy0){
+      b.y=sy0-BR; b.vy=0; b.jumps=0; b.grounded=true; b.on=p;
       G.combo=0;
       if(p.type==="fading"&&p.touched<=0) p.touched=0.0001;
       if(!wasGround){ S.land();
         /* every landing sends out a ripple — the brand device, earned */
-        G.waves.push({x:BX,y:p.y,r:5,a:.5,c:IDS[b.id].rgb});
+        G.waves.push({x:BX,y:sy0,r:5,a:.5,c:IDS[b.id].rgb});
         for(let i=0;i<6;i++)
-          G.parts.push({x:BX+rnd(-8,8),y:p.y,vx:rnd(-70,-10),vy:rnd(-60,-10),
+          G.parts.push({x:BX+rnd(-8,8),y:sy0,vx:rnd(-70,-10),vy:rnd(-60,-10),
             life:.28,max:.28,r:rnd(1,2.2),c:IDS[b.id].rgb}); }
     }
     if(!p.passed && sx+p.w<BX-BR){ p.passed=true; G.score++; }
@@ -617,7 +672,8 @@ function scene(t){
     const x=p.x-G.worldX+sx;
     if(x>VW+80||x+p.w<-80)continue;
     if(p.alpha<=0)continue;
-    platform(x,p.y+sy,p.w,G.ball.id,p.alpha);
+    platform(x,p.y+sy,p.w,G.ball.id,p.alpha,
+      p.step?{x:p.step.x-G.worldX+sx,h:p.step.h}:null);
     if(p.amp){
       /* movers show their travel, so the jump can be read before it is made */
       for(let k=-1;k<=1;k+=2)
@@ -799,7 +855,7 @@ function drawUI(t){
   if(G.state==="dead"&&G.st>.45){
     ui.save();ui.globalAlpha=clamp((G.st-.45)*2.2,0,1);
     scrim(.72);ui.textAlign="left";
-    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":"MISSED"),
+    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":G.reason==="blocked"?"BLOCKED":"MISSED"),
       VW/2,VH*.34,10,500,G.newBest?"#fff":"rgba(255,255,255,.5)",5,"center");
     ui.textAlign="center";
     ui.font="200 92px ui-sans-serif,system-ui,sans-serif";ui.fillStyle="#fff";
