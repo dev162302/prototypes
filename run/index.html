@@ -43,12 +43,20 @@ const gl=glc.getContext("webgl2",{alpha:false,antialias:false,powerPreference:"h
 if(!gl){document.getElementById("fb").style.display="grid";return;}
 const ui=uic.getContext("2d");
 
-const VOID=[0.020,0.027,0.051], DEEP=[0.045,0.115,0.270];
+/* RIPPLE's field: deep brand navy rather than the neon near-black */
+const VOID=[0.004,0.062,0.247], DEEP=[0.038,0.180,0.520];
+const BRIGHT=[0.498,0.831,1.000];   /* #7fd4ff, RIPPLE's accent */
+const WARN=[1.000,0.541,0.420];     /* #ff8a6b, hazards only */
+/* Four identities, all inside the brand's blue family. They were cyan /
+   violet / amber / rose while landing was colour-gated and the player had to
+   tell them apart at a glance; with that rule gone they only tint the world,
+   and a magenta world is not a Novo world. The stroke patterns still carry
+   the difference for anyone who cannot see the hue shift. */
 const IDS=[
-  {rgb:[0.30,0.88,1.00],pat:"solid", name:"CYAN"},
-  {rgb:[0.66,0.42,1.00],pat:"dashed",name:"VIOLET"},
-  {rgb:[1.00,0.70,0.24],pat:"dotted",name:"AMBER"},
-  {rgb:[1.00,0.30,0.44],pat:"double",name:"ROSE"}
+  {rgb:[0.498,0.831,1.000],pat:"solid", name:"ICE"},
+  {rgb:[0.235,0.620,0.980],pat:"dashed",name:"AZURE"},
+  {rgb:[0.098,0.855,0.855],pat:"dotted",name:"AQUA"},
+  {rgb:[0.855,0.945,1.000],pat:"double",name:"FROST"}
 ];
 const cssOf=c=>`rgb(${(c[0]*255)|0},${(c[1]*255)|0},${(c[2]*255)|0})`;
 const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
@@ -134,15 +142,26 @@ function star(x,y,r,c,a,rot){
 /* platforms carry the ball's current identity, colour and pattern alike */
 function platform(x,y,w,id,a){
   const P=IDS[id], c=P.rgb, th=9;
-  halo(x+w/2,y,w*.55,c,.13);
-  quad(x,y-th/2,x+w,y-th/2,x+w,y+th/2,x,y+th/2,c,.28);
-  if(P.pat==="solid"){ seg(x,y,x+w,y,th,c,1); }
+  halo(x+w/2,y,w*.55,c,.085*a);
+  quad(x,y-th/2,x+w,y-th/2,x+w,y+th/2,x,y+th/2,c,.18*a);
+  if(P.pat==="solid"){ seg(x,y,x+w,y,th,c,.82*a); }
   else if(P.pat==="dashed"){ const n=Math.max(2,Math.round(w/22));
-    for(let i=0;i<n;i++){const x0=x+w*(i/n), x1=x0+w/n*.6; seg(x0,y,x1,y,th,c,1);} }
+    for(let i=0;i<n;i++){const x0=x+w*(i/n), x1=x0+w/n*.6; seg(x0,y,x1,y,th,c,.82*a);} }
   else if(P.pat==="dotted"){ const n=Math.max(3,Math.round(w/18));
-    for(let i=0;i<n;i++) disc(x+w*((i+.5)/n),y,th*.46,c,1,10); }
-  else { seg(x,y-th*.30,x+w,y-th*.30,th*.30,c,1);
-         seg(x,y+th*.30,x+w,y+th*.30,th*.30,c,1); }
+    for(let i=0;i<n;i++) disc(x+w*((i+.5)/n),y,th*.46,c,.82*a,10); }
+  else { seg(x,y-th*.30,x+w,y-th*.30,th*.30,c,.82*a);
+         seg(x,y+th*.30,x+w,y+th*.30,th*.30,c,.82*a); }
+}
+
+/* hazard teeth, sitting on a deck. Warm against a blue world so they read
+   as the one thing on screen you must not touch. */
+function spikes(x,y,n,a){
+  for(let i=0;i<n;i++){
+    const x0=x+i*20, mx=x0+10;
+    tri(x0,y+2, x0+20,y+2, mx,y-19, WARN,a*.92,a*.92,a*.92);
+    tri(x0+3,y+1, x0+17,y+1, mx,y-13, [1,1,1],a*.22,a*.22,a*.22);
+  }
+  halo(x+n*10,y-8,n*15,WARN,.11*a);
 }
 
 /* ---------- FBO / viewport ---------- */
@@ -201,8 +220,11 @@ const S={ctx:null,on:true,noise:null,bus:null,
  jump(){this.hiss(.07,.08,1600,-900);this.tone(150,.11,.12,"sine",-50,600);},
  dbl(){this.hiss(.09,.07,2400,-1400);this.tone(260,.14,.11,"sine",120,1800);},
  land(){this.tone(95,.09,.09,"sine",-28,420);},
- star(n){const sc=[0,4,7,11];this.tone(523*Math.pow(2,sc[n%4]/12),.34,.075,"sine",0,3200,.7);},
+ star(n){const sc=[0,2,4,7,9,11,12,14];
+  this.tone(523*Math.pow(2,sc[Math.min(n,sc.length-1)]/12),.34,.075,"sine",0,3200,.7);},
  swap(){this.hiss(.22,.07,500,2600);this.tone(320,.3,.075,"triangle",210,1800);},
+ gate(){this.hiss(.30,.06,700,2400);
+  [0,7,12].forEach((n,i)=>setTimeout(()=>this.tone(392*Math.pow(2,n/12),.42,.07,"sine",0,3000,.6),i*70));},
  die(){this.tone(70,1,.22,"sine",-45,380,1.2);this.hiss(.5,.14,900,-700);},
  best(){[0,4,7,12].forEach((s,i)=>setTimeout(()=>this.tone(330*Math.pow(2,s/12),.6,.09,"sine",0,2600),i*95));}};
 
@@ -238,39 +260,86 @@ const GRAV=2600, JUMP=-830, BR=13;
 const BALL_X=()=>VW*0.34;          /* the ball sits here; the world moves */
 const G={
   state:"title",t:0,st:0,ts:1,slow:0,
-  worldX:0,speed:300,score:0,stars:0,
+  worldX:0,speed:300,score:0,stars:0,combo:0,bestCombo:0,gates:0,
   shake:0,flash:0,aberr:.0018,
-  ball:null,plats:[],gems:[],swaps:[],parts:[],waves:[],
+  ball:null,plats:[],gems:[],swaps:[],rings:[],parts:[],waves:[],
   nextX:0,newBest:false,reason:"",
 
   reset(){
     this.worldX=0;this.speed=300;this.score=0;this.stars=0;
-    this.plats=[];this.gems=[];this.swaps=[];this.parts=[];this.waves=[];
+    this.combo=0;this.bestCombo=0;this.gates=0;
+    this.newBest=false;this.reason="";
+    this.plats=[];this.gems=[];this.swaps=[];this.rings=[];this.parts=[];this.waves=[];
     this.ts=1;this.slow=0;this.flash=0;this.aberr=.0018;
-    this.ball={y:VH*.45,vy:0,id:0,jumps:0,rot:0,grounded:false,trail:[]};
+    this.ball={y:VH*.45,vy:0,id:0,jumps:0,rot:0,grounded:false,on:null,trail:[]};
     /* a long, generous opening run */
-    this.plats.push({x:-120,y:VH*.60,w:520,passed:true});
+    this.plats.push({x:-120,y:VH*.60,w:520,type:'normal',baseY:VH*.60,ph:0,amp:0,touched:0,alpha:1,passed:true});
+    /* #warp=N starts at that score, for showing the late game without
+       having to survive to it */
+    const wp=+(QS.get("warp")||0); if(wp>0) this.score=wp;
     this.nextX=420;
     for(let i=0;i<9;i++)this.gen();
+    /* #skip=N drops you onto the Nth deck, for looking at the later
+       obstacle mix without playing up to it */
+    const sk=+(QS.get("skip")||0);
+    if(sk>0){
+      for(let i=0;i<sk;i++)this.gen();
+      const p=this.plats[Math.min(sk,this.plats.length-1)];
+      this.worldX=p.x-BALL_X()+24;
+      this.ball.y=p.y-BR;this.ball.grounded=true;this.ball.vy=0;this.ball.on=p;
+    }
   },
 
   /* generated so a gap is always clearable: single jump covers ~200px,
      double jump ~330px, and nothing is ever placed beyond that */
   gen(){
     const last=this.plats[this.plats.length-1];
-    const diff=clamp(this.score/40,0,1);
-    const gap=RI(Math.round(lerp(80,130,diff)), Math.round(lerp(165,255,diff)));
-    const w=RI(Math.round(lerp(150,95,diff)), Math.round(lerp(230,150,diff)));
-    const y=clamp(last.y+rnd(-VH*.12,VH*.12), VH*.28, VH*.74);
+    const diff=clamp(this.score/55,0,1);
+    const gap=RI(Math.round(lerp(80,125,diff)), Math.round(lerp(160,235,diff)));
+    const w=RI(Math.round(lerp(165,115,diff)), Math.round(lerp(245,170,diff)));
+    const y=clamp((last.baseY||last.y)+rnd(-VH*.12,VH*.12), VH*.28, VH*.72);
     const x=last.x+last.w+gap;
-    this.plats.push({x,y,w,passed:false});
-    /* a star over the gap is the reason to jump early rather than late */
-    if(Math.random()<.75)
-      this.gems.push({x:x-gap/2,y:y-rnd(60,130),got:false,ph:rnd(0,TAU)});
-    /* a switcher sits ON a platform whose colour differs from the run */
-    if(Math.random()<.34)
-      this.swaps.push({x:x+w/2,y:y-34,got:false,ph:rnd(0,TAU)});
-    this.nextX=x+w;
+
+    const roll=Math.random();
+    let type="normal";
+    if(this.score>10&&roll>.88&&last.type!=="mover") type="mover";
+    else if(this.score>16&&roll>.74&&last.type!=="fading") type="fading";
+
+    /* Spikes are decided BEFORE the width is fixed, and then the deck is
+       widened to fit them: 130px of runway in front, 40px of deck behind.
+       Testing it the other way round — gate on the width we happened to
+       roll — produced 117 spike beds in 240,000 platforms, because the
+       widths shrink with difficulty faster than the requirement does. */
+    let spikes=null, W=w;
+    if(this.score>10&&type==="normal"&&Math.random()<.26){
+      const n=RI(2,3);
+      W=Math.max(w,130+n*20+40);
+      spikes={x:x+130,n};
+    }
+
+    const p={x,y,w:W,type,passed:false,baseY:y,ph:rnd(0,TAU),
+      amp:type==="mover"?rnd(VH*.045,VH*.095):0, touched:0, alpha:1, spikes};
+
+    this.plats.push(p);
+
+    if(Math.random()<.72)
+      this.gems.push({x:x-gap/2,y:y-rnd(70,140),got:false,ph:rnd(0,TAU)});
+
+    /* a brand ring hung on the natural jump arc. Deliberately NOT lethal —
+       procedural placement plus a lethal hoop is how you get unfair deaths.
+       Thread it for a bonus, clip it and you simply lose the bonus. */
+    if(this.score>4&&Math.random()<.44){
+      /* measured off the take-off deck, not the landing one. A single jump
+         apexes 132px up; 105 sits inside that with the hole's 40px of slack
+         either way, so a normal jump threads it without a special input. */
+      const takeoff=(last.baseY||last.y)-(last.amp||0);
+      this.rings.push({x:x-gap/2,y:takeoff-105,r:62,got:false,ph:rnd(0,TAU)});
+    }
+
+    if(Math.random()<.26)
+      this.swaps.push({x:x+w/2,y:y-36,got:false,ph:rnd(0,TAU)});
+
+    this.nextX=x+W;
   },
 
   start(){this.reset();this.setState("play");},
@@ -301,13 +370,31 @@ function step(dt){
 
   if(In.tap){
     In.tap=false;
-    if(b.grounded){ b.vy=JUMP; b.jumps=1; b.grounded=false; S.jump();
+    if(b.grounded){ b.vy=JUMP; b.jumps=1; b.grounded=false; b.on=null; S.jump();
       G.waves.push({x:BX,y:b.y+BR,r:4,a:.45,c:IDS[b.id].rgb}); }
     else if(b.jumps<2){ b.vy=JUMP*.88; b.jumps=2; S.dbl();   /* the double tap */
       G.waves.push({x:BX,y:b.y,r:3,a:.6,c:IDS[b.id].rgb});
       for(let i=0;i<10;i++){const a=rnd(0,TAU),sp=rnd(40,170);
         G.parts.push({x:BX+Math.cos(a)*6,y:b.y+Math.sin(a)*6,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp+90,
           life:rnd(.2,.5),max:.5,r:rnd(1,2.4),c:IDS[b.id].rgb});} }
+  }
+
+  /* moving platforms drift, touched ones start dissolving */
+  for(const p of G.plats){
+    if(p.amp) p.y=p.baseY+Math.sin(G.t*1.5+p.ph)*p.amp;
+    if(p.type==="fading"&&p.touched>0){
+      p.touched+=dt;
+      p.alpha=clamp(1-(p.touched-0.75)/0.55,0,1);
+    }
+  }
+
+  /* A mover that rises would otherwise pass straight through the ball, and
+     one that falls would leave it hanging in mid-air, so a grounded ball is
+     carried with the deck it is standing on. */
+  if(b.on&&b.grounded){
+    const sx=b.on.x-G.worldX;
+    if(BX+BR<sx||BX-BR>sx+b.on.w||b.on.alpha<=0) b.on=null;
+    else b.y=b.on.y-BR;
   }
 
   const wasGround=b.grounded;
@@ -321,9 +408,23 @@ function step(dt){
   for(const p of G.plats){
     const sx=p.x-G.worldX;
     if(BX+BR<sx || BX-BR>sx+p.w) continue;
+    if(p.alpha<=0) continue;
+
+    /* spikes: you must be over them in the air, not on the deck */
+    if(p.spikes){
+      const s0=p.spikes.x-G.worldX, s1=s0+p.spikes.n*20;
+      if(BX+BR*.6>s0 && BX-BR*.6<s1 && b.y+BR>p.y-19 && b.y-BR<p.y+6){
+        G.die("spikes"); return;
+      }
+    }
+
     if(b.vy>=0 && prevY+BR<=p.y+2 && b.y+BR>=p.y){
-      b.y=p.y-BR; b.vy=0; b.jumps=0; b.grounded=true;
+      b.y=p.y-BR; b.vy=0; b.jumps=0; b.grounded=true; b.on=p;
+      G.combo=0;
+      if(p.type==="fading"&&p.touched<=0) p.touched=0.0001;
       if(!wasGround){ S.land();
+        /* every landing sends out a ripple — the brand device, earned */
+        G.waves.push({x:BX,y:p.y,r:5,a:.5,c:IDS[b.id].rgb});
         for(let i=0;i<6;i++)
           G.parts.push({x:BX+rnd(-8,8),y:p.y,vx:rnd(-70,-10),vy:rnd(-60,-10),
             life:.28,max:.28,r:rnd(1,2.2),c:IDS[b.id].rgb}); }
@@ -337,7 +438,9 @@ function step(dt){
     if(g.got)continue;
     g.ph+=dt*3;
     if(Math.hypot((g.x-G.worldX)-BX,g.y-b.y)<BR+17){
-      g.got=true;G.stars++;G.score+=2;S.star(G.stars);
+      g.got=true;G.stars++;G.combo++;
+      G.bestCombo=Math.max(G.bestCombo,G.combo);
+      G.score+=2*G.combo;S.star(G.combo-1);
       G.flash=Math.max(G.flash,.08);
       for(let i=0;i<12;i++){const a=rnd(0,TAU),sp=rnd(50,190);
         G.parts.push({x:g.x-G.worldX,y:g.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
@@ -358,11 +461,23 @@ function step(dt){
     }
   }
 
+  for(const rg of G.rings){
+    if(rg.got)continue;
+    rg.ph+=dt*1.6;
+    const d=Math.hypot((rg.x-G.worldX)-BX, rg.y-b.y);
+    if(d < rg.r-22){            /* threaded the hole */
+      rg.got=true;G.gates++;G.score+=5;
+      G.ts=.4;G.slow=.26;G.flash=Math.max(G.flash,.16);S.gate();
+      G.waves.push({x:(rg.x-G.worldX),y:rg.y,r:rg.r*.5,a:.8,c:IDS[b.id].rgb});
+    }
+  }
+
   while(G.nextX-G.worldX < VW*3) G.gen();
   const cut=G.worldX-260;
   G.plats=G.plats.filter(p=>p.x+p.w>cut);
   G.gems=G.gems.filter(g=>g.x>cut);
   G.swaps=G.swaps.filter(s=>s.x>cut);
+  G.rings=G.rings.filter(r=>r.x>cut);
 }
 
 function fx(dt){
@@ -391,7 +506,7 @@ function scene(t){
   if(!REDUCED) for(let i=0;i<7;i++){
     const x=(((i*337-G.worldX*.12)%(VW+760))+(VW+760))%(VW+760)-380;
     const y=90+(i%5)*(VH*.19)+Math.sin(t*.3+i)*14;
-    for(let k=0;k<3;k++) ring(x+sx,y+sy,54+k*30+(i%3)*24,1.1,DEEP,.55-k*.13,26);
+    for(let k=0;k<3;k++) ring(x+sx,y+sy,54+k*30+(i%3)*24,1.1,k?DEEP:BRIGHT,(k?.55:.16)-k*.13,26);
   }
 
   for(const w of G.waves) ring(w.x+sx,w.y+sy,w.r,2.2,w.c,clamp(w.a,0,1)*.5,34);
@@ -399,7 +514,39 @@ function scene(t){
   for(const p of G.plats){
     const x=p.x-G.worldX+sx;
     if(x>VW+80||x+p.w<-80)continue;
-    platform(x,p.y+sy,p.w,G.ball.id,1);
+    if(p.alpha<=0)continue;
+    platform(x,p.y+sy,p.w,G.ball.id,p.alpha);
+    if(p.amp){
+      /* movers show their travel, so the jump can be read before it is made */
+      for(let k=-1;k<=1;k+=2)
+        seg(x+p.w/2,p.baseY+sy+p.amp*k,x+p.w/2,p.baseY+sy+p.amp*k*.55,1.4,BRIGHT,.30);
+      disc(x+p.w/2,p.baseY+sy,2.2,BRIGHT,.5,8);
+    }
+    if(p.type==="fading"){
+      const a=p.touched>0?p.alpha:.85;
+      ring(x+p.w/2,p.y+sy,p.w*.5+8,1.2,BRIGHT,.22*a,32);
+    }
+    if(p.spikes) spikes(p.spikes.x-G.worldX+sx,p.y+sy,p.spikes.n,p.alpha);
+  }
+
+  /* brand rings hung over the gaps — thread one for a bonus */
+  for(const rg of G.rings){
+    const x=rg.x-G.worldX+sx;
+    if(x<-120||x>VW+120)continue;
+    const y=rg.y+sy;
+    if(rg.got){
+      halo(x,y,rg.r*1.2,BRIGHT,.16);
+      ring(x,y,rg.r,3.4,BRIGHT,.55,40);
+    }else{
+      const N=26, puls=1+Math.sin(rg.ph)*.02;
+      for(let i=0;i<N;i++){
+        if(i%2)continue;
+        const a0=i/N*TAU+rg.ph*.25, a1=(i+1)/N*TAU+rg.ph*.25;
+        seg(x+Math.cos(a0)*rg.r*puls,y+Math.sin(a0)*rg.r*puls,
+            x+Math.cos(a1)*rg.r*puls,y+Math.sin(a1)*rg.r*puls,3.0,BRIGHT,.7);
+      }
+      halo(x,y,rg.r*.5,BRIGHT,.07);
+    }
   }
 
   for(const g of G.gems){
@@ -463,7 +610,7 @@ function render(t){
   gl.bindVertexArray(qVAO);
   gl.bindFramebuffer(gl.FRAMEBUFFER,FB.a.f);gl.viewport(0,0,FB.a.w,FB.a.h);
   gl.useProgram(pBright);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,FB.s.t);
-  gl.uniform1i(uBr.uTex,0);gl.uniform1f(uBr.uThresh,.30);
+  gl.uniform1i(uBr.uTex,0);gl.uniform1f(uBr.uThresh,.62);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.useProgram(pBlur);
   for(let i=0;i<2;i++){
@@ -481,9 +628,9 @@ function render(t){
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,FB.s.t);
   gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,FB.a.t);
   gl.uniform1i(uC.uScene,0);gl.uniform1i(uC.uBloom,1);
-  gl.uniform1f(uC.uB,1.2);gl.uniform1f(uC.uAberr,G.aberr);
+  gl.uniform1f(uC.uB,.80);gl.uniform1f(uC.uAberr,G.aberr);
   gl.uniform1f(uC.uTime,t);gl.uniform1f(uC.uFlash,G.flash*.5);
-  gl.uniform1f(uC.uVig,.5);
+  gl.uniform1f(uC.uVig,.62);
   gl.drawArrays(gl.TRIANGLES,0,3);
   gl.bindVertexArray(null);
 }
@@ -512,7 +659,7 @@ function drawUI(t){
   ui.setTransform(1,0,0,1,0,0);ui.clearRect(0,0,CW,CH);
   ui.setTransform(scale*dpr,0,0,scale*dpr,ox*dpr,oy*dpr);
   ui.textAlign="left";ui.textBaseline="alphabetic";
-  const scrim=a=>{ui.fillStyle=`rgba(5,7,13,${a})`;
+  const scrim=a=>{ui.fillStyle=`rgba(1,14,50,${a})`;
     ui.fillRect(-ox/scale,-oy/scale,VW+ox*2/scale,VH+oy*2/scale);};
 
   if(G.state==="play"||G.state==="dead"){
@@ -520,7 +667,12 @@ function drawUI(t){
     ui.font="300 34px ui-sans-serif,system-ui,sans-serif";
     ui.fillStyle="rgba(255,255,255,.92)";
     ui.fillText(String(G.score),24,54);
-    trk("★ "+G.stars,24,72,9,400,"rgba(255,255,255,.34)",2.6,"left");
+    trk("★ "+G.stars+"   ◎ "+G.gates,24,72,9,400,"rgba(255,255,255,.34)",2.6,"left");
+    trk(Math.floor(G.worldX/50)+" M",24,88,8,400,"rgba(127,212,255,.40)",2.6,"left");
+    if(G.combo>1){
+      ui.textAlign="left";
+      trk("×"+G.combo,24,116,15,500,"rgba(127,212,255,"+clamp(.5+G.combo*.1,0,1)+")",2.2,"left");
+    }
     const P=IDS[G.ball.id];
     trk(P.name,VW-24,36,9,500,cssOf(P.rgb),3.4,"right");
     trk(P.pat.toUpperCase(),VW-24,50,8,400,"rgba(255,255,255,.26)",2.6,"right");
@@ -531,11 +683,12 @@ function drawUI(t){
     ui.textAlign="center";
     ui.font="200 66px ui-sans-serif,system-ui,sans-serif";
     ui.fillStyle="rgba(255,255,255,.96)";
-    ui.fillText("RUN",VW/2,VH*.36);
+    ui.fillText("RUN",VW/2,VH*.28);
     ui.textAlign="left";
-    trk("TAP TO JUMP — TAP AGAIN TO DOUBLE JUMP",VW/2,VH*.36+26,8.5,400,"rgba(255,255,255,.42)",3.4,"center");
-    trk("DON'T FALL — GET STARS",VW/2,VH*.46,8,400,"rgba(255,255,255,.32)",3.2,"center");
-    const b=btn("BEGIN",VH*.64,168,42);
+    trk("TAP TO JUMP — TAP AGAIN TO DOUBLE JUMP",VW/2,VH*.28+26,8.5,400,"rgba(255,255,255,.42)",3.4,"center");
+    trk("DON'T FALL — CHAIN STARS — THREAD THE RINGS",VW/2,VH*.28+50,8,400,"rgba(255,255,255,.32)",3.2,"center");
+    trk("WATCH THE DECKS THAT FADE",VW/2,VH*.28+66,7.5,400,"rgba(127,212,255,.34)",3.2,"center");
+    const b=btn("BEGIN",VH*.80,168,42);
     trk("NOVO NORDISK",VW/2,VH-28,8,400,"rgba(255,255,255,.20)",4,"center");
     if(hit(b)||In.confirm||In.tap){In.tap=false;In.confirm=false;G.start();}
   }
@@ -543,13 +696,16 @@ function drawUI(t){
   if(G.state==="dead"&&G.st>.45){
     ui.save();ui.globalAlpha=clamp((G.st-.45)*2.2,0,1);
     scrim(.72);ui.textAlign="left";
-    trk(G.newBest?"NEW BEST":"MISSED",
+    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":"MISSED"),
       VW/2,VH*.34,10,500,G.newBest?"#fff":"rgba(255,255,255,.5)",5,"center");
     ui.textAlign="center";
     ui.font="200 92px ui-sans-serif,system-ui,sans-serif";ui.fillStyle="#fff";
     ui.fillText(String(G.score),VW/2,VH*.46);
     ui.textAlign="left";
-    trk("★ "+G.stars+"   ·   BEST "+(Save.best||0),VW/2,VH*.50,9,400,"rgba(255,255,255,.34)",3.2,"center");
+    trk("★ "+G.stars+"   ·   ◎ "+G.gates+"   ·   BEST ×"+G.bestCombo,
+      VW/2,VH*.50,9,400,"rgba(255,255,255,.34)",3.2,"center");
+    trk(Math.floor(G.worldX/50)+" M   ·   BEST "+(Save.best||0),
+      VW/2,VH*.50+16,8,400,"rgba(127,212,255,.34)",3.2,"center");
     trk("SOME THINGS ARE WORTH THE WAIT",VW/2,VH*.60,9,400,"rgba(255,255,255,.55)",3.6,"center");
     trk("YOUR HEALTH ISN'T",VW/2,VH*.60+18,9,500,"#fff",3.6,"center");
     trk("NOVONORDISK.COM",VW/2,VH*.60+40,7.5,400,"rgba(255,255,255,.28)",3.2,"center");
@@ -573,7 +729,7 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 resize();G.reset();
-if(QS.get("play"))G.start();
+if(QS.get("play")||QS.get("warp")||QS.get("skip"))G.start();
 requestAnimationFrame(frame);
 })();
 </script>
