@@ -198,10 +198,15 @@ function buildLevel(L){
      reason the ripple exists rather than a nicety: the ball cannot pass one,
      and one tap takes the whole wall down — a small action removing a large
      obstacle, which is the campaign in a single verb. */
+  /* Height is derived, not authored: with unlimited air jumps a fixed-height
+     wall can always be climbed over, so every wall runs from its deck up past
+     the top of the play column. It is a wall or it is nothing. */
   const bricks=[];
-  for(const w of (L.walls||[]))
-    for(let c=0;c<w[2];c++) for(let r=0;r<w[3];r++)
+  for(const w of (L.walls||[])){
+    const rows=Math.ceil((w[1]+40)/BH);
+    for(let c=0;c<w[2];c++) for(let r=0;r<rows;r++)
       bricks.push({x:w[0]+c*BW, y:w[1]-(r+1)*BH, gone:false});
+  }
 
   const boosts=(L.boosts||[]).map(o=>({x:o[0],y:o[1],got:false}));
 
@@ -283,7 +288,7 @@ const G={
   t:0,st:0,
   li:0,L:null,
   worldX:0,bx:0,ball:null,parts:[],pops:[],waves:[],
-  got:0,score:0,chain:0,best:0,ripples:0,bricks:0,boosts:0,boost:0,stuck:0,paused:false,
+  got:0,score:0,chain:0,best:0,ripples:0,bricks:0,boosts:0,boost:0,rcd:0,stuck:0,paused:false,
 
   load(i){
     this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
@@ -291,7 +296,7 @@ const G={
     SPEED=SPEEDS[this.L.diff];
     this.worldX=0;this.bx=BALL_X();this.got=0;this.score=0;
     this.chain=0;this.best=0;this.ripples=0;this.bricks=0;
-    this.boosts=0;this.boost=0;this.stuck=0;
+    this.boosts=0;this.boost=0;this.rcd=0;this.stuck=0;
     this.parts=[];this.pops=[];this.waves=[];
     const b0=this.L.blocks[0];
     this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
@@ -349,6 +354,11 @@ const BW=28, BH=16;                 /* brick size in a wall */
    catch band at 62..138, which covers both an early jump (caught at the 132
    apex) and a late one (caught on the way up). */
 const BOOST_R=27, BOOST_T=3.0, BOOST_X=1.55, BOOST_UP=100;
+const RIP_CD=0.55;
+/* Unlimited air jumps need a lid, for two reasons: the ball would otherwise
+   climb out of view entirely, and a wall whose top is off-column could be
+   flown over by going above it. */
+const CEIL=34;
 
 function ripple(ox,oy){
   G.chain=0; G.ripples++;
@@ -366,7 +376,7 @@ function ripple(ox,oy){
         const cx=k.x+BW/2, cy=k.y+BH/2;
         if(Math.hypot(cx-f[0],cy-f[1])>f[2])continue;
         k.gone=true;G.bricks++;
-        G.score+=2;
+        G.score+=1;
         next.push([cx,cy,CHAIN_R]);
         G.waves.push({x:cx,y:cy,r:3,max:CHAIN_R*.8,a:.8,w:2.2,d:D*.07,v:520});
         for(let i=0;i<5;i++){const a=rnd(0,TAU),sp=rnd(50,200);
@@ -415,14 +425,24 @@ function step(dt){
   G.stuck = (want<=G.bx+0.01) ? G.stuck+dt : 0;
   G.bx=want; G.worldX=G.bx-BX;
 
+  /* Every tap jumps — no air-jump limit. A tap that does nothing reads as a
+     dropped input, and on a phone in a queue that is the worst thing the game
+     can do. Air jumps are weaker than the first, and each one in the air also
+     sends a ripple, on a short cooldown so it stays a decision rather than
+     something you can hold down. */
+  if(G.rcd>0) G.rcd-=dt;
   if(In.tap>0){
     In.tap--;
     if(b.grounded){ b.vy=JUMP;b.jumps=1;b.grounded=false;S.jump(); }
-    else if(b.jumps<2){ b.vy=JUMP2;b.jumps=2;S.dbl(); ripple(G.bx,b.y); }
+    else {
+      b.vy=JUMP2;b.jumps++;S.dbl();
+      if(G.rcd<=0){ G.rcd=RIP_CD; ripple(G.bx,b.y); }
+    }
   }
 
   b.vy+=GRAV*dt;
   const prevY=b.y; b.y+=b.vy*dt;
+  if(b.y-BR<CEIL){ b.y=CEIL+BR; if(b.vy<0)b.vy=0; }
   b.grounded=false;
   b.trail.unshift(b.y); if(b.trail.length>50)b.trail.pop();
 
@@ -822,7 +842,7 @@ function draw(){
       x2.globalAlpha=clamp((G.stuck-1.1)*2,0,1);
       x2.textAlign="center";x2.textBaseline="middle";
       x2.fillStyle=BRIGHT;x2.font="600 17px ui-sans-serif,system-ui,sans-serif";
-      x2.fillText("TAP TWICE TO RIPPLE THROUGH",VW/2,VH*.30);
+      x2.fillText("JUMP, THEN TAP AGAIN TO RIPPLE THROUGH",VW/2,VH*.30);
       x2.restore();
     }
     if(G.chain>1){
