@@ -144,41 +144,40 @@ function star(x,y,r,c,a,rot){
   for(let i=1;i<pts.length-1;i++)
     tri(pts[0][0],pts[0][1],pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],c,a,a,a);
 }
-/* The reference decks are not plain bars: each is a slab with a sawtooth
-   seam running just under the top rail, and mass below it rather than a
-   floating line. The seam is drawn bright here rather than dark, because
-   this renderer is additive and cannot subtract light from what is beneath.
-   The reference also raises some decks into a solid plateau; that was built
-   and then taken back out on request, so every deck here is one height. */
-const BODY=44, RAIL=9;
+/* Terrain, read off the recording.
+   A block is a solid mass, not a floating line: a bright pill-shaped rail
+   capping it, a row of scallops bitten out underneath, then the body filling
+   down to its own depth. Consecutive blocks either sit flush against each
+   other at different heights — which is what makes a step — or have a pit
+   between them.
+   The reference cuts the scallops out in the background colour. This
+   renderer is additive and cannot subtract light, so they are drawn the
+   other way round: the body's top edge rises into cusps between the bites. */
+const RH=13, SC=7, SPER=12;
 
-function seam(x0,x1,y,c,a){
-  const half=5.5, amp=3.0;
-  let px=x0, py=y, i=0;
-  for(let X=x0;X<x1;X+=half){
-    const nx=Math.min(X+half,x1), ny=(i++%2)?y+amp:y-amp;
-    seg(px,py,nx,ny,1.7,c,.62*a); px=nx; py=ny;
+/* The bites are wide and round and the lit cusps between them are thin —
+   getting that ratio the wrong way round turns the edge into a row of teeth. */
+function scallop(x0,x1,y,c,a){
+  const n=Math.max(1,Math.round((x1-x0)/SPER)), per=(x1-x0)/n;
+  for(let i=0;i<=n;i++){
+    const cx=x0+i*per, hw=per*.13;
+    tri(cx-hw,y, cx+hw,y, cx,y-SC, c,a,a,a);
   }
 }
 
-function rail(x,y,w,P,c,a){
-  const th=RAIL;
-  if(P.pat==="solid"){ seg(x,y,x+w,y,th,c,.82*a); }
-  else if(P.pat==="dashed"){ const n=Math.max(2,Math.round(w/22));
-    for(let i=0;i<n;i++){const x0=x+w*(i/n), x1=x0+w/n*.6; seg(x0,y,x1,y,th,c,.82*a);} }
-  else if(P.pat==="dotted"){ const n=Math.max(3,Math.round(w/18));
-    for(let i=0;i<n;i++) disc(x+w*((i+.5)/n),y,th*.46,c,.82*a,10); }
-  else { seg(x,y-th*.30,x+w,y-th*.30,th*.30,c,.82*a);
-         seg(x,y+th*.30,x+w,y+th*.30,th*.30,c,.82*a); }
-}
-
-/* platforms carry the ball's current identity, colour and pattern alike */
-function platform(x,y,w,id,a){
-  const P=IDS[id], c=P.rgb;
-  halo(x+w/2,y,w*.55,c,.085*a);
-  quad(x,y+RAIL/2,x+w,y+RAIL/2,x+w,y+RAIL/2+BODY,x,y+RAIL/2+BODY,c,.10*a);
-  rail(x,y,w,P,c,a);
-  seam(x,x+w,y+RAIL/2+5,c,a);
+function platform(x,y,w,id,a,depth){
+  const c=IDS[id].rgb;
+  const d=depth||120, ry=y+RH/2, base=y+RH+SC;
+  halo(x+w/2,y,w*.55,c,.075*a);
+  /* the rail overhangs the body slightly and is capped round, as in the game */
+  seg(x-3,ry,x+w+3,ry,RH,c,.85*a);
+  disc(x-3,ry,RH/2,c,.85*a,12); disc(x+w+3,ry,RH/2,c,.85*a,12);
+  /* body */
+  quad(x,base,x+w,base,x+w,y+d,x,y+d,c,.30*a);
+  scallop(x,x+w,base,c,.44*a);
+  /* the mass reads as a mass, not an outline: edges and floor picked out */
+  seg(x,base,x,y+d,2.0,c,.42*a); seg(x+w,base,x+w,y+d,2.0,c,.42*a);
+  seg(x,y+d,x+w,y+d,2.2,c,.38*a);
 }
 
 /* hazard teeth, sitting on a deck. Warm against a blue world so they read
@@ -340,7 +339,7 @@ const G={
     this.ts=1;this.slow=0;this.flash=0;this.aberr=.0018;
     this.ball={y:VH*.45,vy:0,id:0,jumps:0,rot:0,grounded:false,on:null,trail:[]};
     /* a long, generous opening run */
-    this.plats.push({x:-120,y:VH*.60,w:520,type:'normal',baseY:VH*.60,ph:0,amp:0,touched:0,alpha:1,passed:true});
+    this.plats.push({x:-120,y:VH*.60,w:520,type:'normal',depth:VH*.44,baseY:VH*.60,ph:0,amp:0,touched:0,alpha:1,passed:true});
     /* #warp=N starts at that score, for showing the late game without
        having to survive to it */
     const wp=+(QS.get("warp")||0); if(wp>0) this.score=wp;
@@ -362,57 +361,72 @@ const G={
   gen(){
     const last=this.plats[this.plats.length-1];
     const diff=clamp(this.score/55,0,1);
-    const gap=RI(Math.round(lerp(80,125,diff)), Math.round(lerp(160,235,diff)));
     const w=RI(Math.round(lerp(165,115,diff)), Math.round(lerp(245,170,diff)));
-    const y=clamp((last.baseY||last.y)+rnd(-VH*.12,VH*.12), VH*.28, VH*.72);
+
+    /* Either this block sits flush against the last one at a different
+       height — a step, which is how the recording builds most of its
+       terrain — or there is a pit to clear. A step up is capped at 96px
+       against a 132px single-jump apex, so it is always clearable from a
+       standing start on the deck in front of it. */
+    const canStep = this.score>6 && last.type==="normal" && !last.amp && last.w>=140;
+    const step = canStep && Math.random()<.40;
+    const gap = step ? 0 : RI(Math.round(lerp(80,125,diff)), Math.round(lerp(160,235,diff)));
+
+    let y;
+    if(step){
+      y = Math.random()<.5
+        ? clamp(last.y-rnd(38,96),  VH*.24, VH*.74)     /* up  */
+        : clamp(last.y+rnd(38,150), VH*.24, VH*.74);    /* down */
+      if(last.y-y>96) y=last.y-96;
+      if(Math.abs(y-last.y)<18) y=last.y-46;            /* never a token step */
+    }else{
+      y = clamp(last.y+rnd(-VH*.12,VH*.12), VH*.28, VH*.72);
+    }
+
     const x=last.x+last.w+gap;
+    const type = (!step&&this.score>16&&Math.random()<.16&&last.type!=="fading") ? "fading"
+               : (!step&&this.score>10&&Math.random()<.12&&last.type!=="mover") ? "mover"
+               : "normal";
 
-    const roll=Math.random();
-    let type="normal";
-    if(this.score>10&&roll>.88&&last.type!=="mover") type="mover";
-    else if(this.score>16&&roll>.74&&last.type!=="fading") type="fading";
+    /* some blocks are columns running off the bottom, some are shallow slabs */
+    const depth = Math.random()<.45 ? (VH-y+40) : rnd(70,190);
 
-    /* Spikes are decided BEFORE the width is fixed, and then the deck is
-       widened to fit them: 130px of runway in front, 40px of deck behind.
-       Testing it the other way round — gate on the width we happened to
-       roll — produced 117 spike beds in 240,000 platforms, because the
-       widths shrink with difficulty faster than the requirement does. */
     let spikes=null, W=w;
-    if(this.score>10&&type==="normal"&&Math.random()<.26){
+    if(!step&&type==="normal"&&this.score>10&&Math.random()<.24){
       const n=RI(2,3);
       W=Math.max(w,130+n*20+40);
       spikes={x:x+130,n};
     }
 
-    const p={x,y,w:W,type,passed:false,baseY:y,ph:rnd(0,TAU),
+    const p={x,y,w:W,type,depth,passed:false,baseY:y,ph:rnd(0,TAU),
       amp:type==="mover"?rnd(VH*.045,VH*.095):0, touched:0, alpha:1, spikes};
-
     this.plats.push(p);
 
-    /* Stars sit in a short arc along the jump path rather than alone. One
-       star per gap left the ripple with nothing to chain to — the nearest
-       neighbour was 300px away and no sane reach would ever bridge it. */
-    if(Math.random()<.80){
-      const n=RI(2,4), cx=x-gap/2, apex=Math.min(last.baseY||last.y,y)-105;
-      for(let i=0;i<n;i++){
-        const t=i-(n-1)/2;
-        this.gems.push({x:cx+t*52,y:apex+t*t*11,got:false,ph:rnd(0,TAU)});
+    /* collectibles belong over a pit — there is no arc to fly across a step */
+    if(gap>0){
+      if(Math.random()<.80){
+        const n=RI(2,4), cx=x-gap/2, apex=Math.min(last.y,y)-105;
+        for(let i=0;i<n;i++){
+          const t=i-(n-1)/2;
+          this.gems.push({x:cx+t*52,y:apex+t*t*11,got:false,ph:rnd(0,TAU)});
+        }
+      }
+      if(this.score>4&&Math.random()<.44){
+        const takeoff=last.y-(last.amp||0);
+        this.rings.push({x:x-gap/2,y:takeoff-105,r:62,got:false,ph:rnd(0,TAU)});
       }
     }
-
-    /* a brand ring hung on the natural jump arc. Deliberately NOT lethal —
-       procedural placement plus a lethal hoop is how you get unfair deaths.
-       Thread it for a bonus, clip it and you simply lose the bonus. */
-    if(this.score>4&&Math.random()<.44){
-      /* measured off the take-off deck, not the landing one. A single jump
-         apexes 132px up; 105 sits inside that with the hole's 40px of slack
-         either way, so a normal jump threads it without a special input. */
-      const takeoff=(last.baseY||last.y)-(last.amp||0);
-      this.rings.push({x:x-gap/2,y:takeoff-105,r:62,got:false,ph:rnd(0,TAU)});
+    else if(Math.random()<.72){
+      /* over a step there is no arc to fly, so stars sit just above the
+         surface instead — the recording does both. Without this a ripple
+         fired over a step reached nothing, and steps are 40% of the terrain. */
+      const n=RI(2,3), cx=x+W*.42;
+      for(let i=0;i<n;i++)
+        this.gems.push({x:cx+i*50,y:y-rnd(58,96),got:false,ph:rnd(0,TAU)});
     }
 
-    if(Math.random()<.26)
-      this.swaps.push({x:x+w/2,y:y-36,got:false,ph:rnd(0,TAU)});
+    if(Math.random()<.24)
+      this.swaps.push({x:x+W/2,y:y-36,got:false,ph:rnd(0,TAU)});
 
     this.nextX=x+W;
   },
@@ -575,6 +589,12 @@ function step(dt){
       }
     }
 
+    /* run into the side of a block and the run is over. Checked below the
+       surface by a margin so landing on the corner is still a landing. */
+    if(b.y+BR>p.y+7 && BX+BR>sx && BX-BR<sx+8 && b.y-BR<p.y+p.depth){
+      G.die("blocked"); return;
+    }
+
     if(b.vy>=0 && prevY+BR<=p.y+2 && b.y+BR>=p.y){
       b.y=p.y-BR; b.vy=0; b.jumps=0; b.grounded=true; b.on=p;
       G.combo=0;
@@ -678,7 +698,7 @@ function scene(t){
     const x=p.x-G.worldX+sx;
     if(x>VW+80||x+p.w<-80)continue;
     if(p.alpha<=0)continue;
-    platform(x,p.y+sy,p.w,G.ball.id,p.alpha);
+    platform(x,p.y+sy,p.w,G.ball.id,p.alpha,p.depth);
     if(p.amp){
       /* movers show their travel, so the jump can be read before it is made */
       for(let k=-1;k<=1;k+=2)
@@ -838,8 +858,16 @@ function drawUI(t){
       trk("×"+G.combo,24,116+SAT,15,500,"rgba(127,212,255,"+clamp(.5+G.combo*.1,0,1)+")",2.2,"left");
     }
     const P=IDS[G.ball.id];
-    trk(P.name,VW-24,36+SAT,9,500,cssOf(P.rgb),3.4,"right");
-    trk(P.pat.toUpperCase(),VW-24,50+SAT,8,400,"rgba(255,255,255,.26)",2.6,"right");
+    trk(P.name,VW-64,36+SAT,9,500,cssOf(P.rgb),3.4,"right");
+    if(!paused){
+      const b=PB();
+      ui.save();
+      ui.strokeStyle="rgba(255,255,255,.30)";ui.lineWidth=1.2;
+      ui.beginPath();ui.arc(b.x,b.y,b.r,0,Math.PI*2);ui.stroke();
+      ui.fillStyle="rgba(255,255,255,.72)";
+      ui.fillRect(b.x-5.5,b.y-6,3.4,12); ui.fillRect(b.x+2.1,b.y-6,3.4,12);
+      ui.restore();
+    }
   }
 
   if(G.state==="title"){
@@ -874,7 +902,7 @@ function drawUI(t){
   if(G.state==="dead"&&G.st>.45){
     ui.save();ui.globalAlpha=clamp((G.st-.45)*2.2,0,1);
     scrim(.72);ui.textAlign="left";
-    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":"MISSED"),
+    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":G.reason==="blocked"?"BLOCKED":"MISSED"),
       VW/2,VH*.34,10,500,G.newBest?"#fff":"rgba(255,255,255,.5)",5,"center");
     ui.textAlign="center";
     ui.font="200 92px ui-sans-serif,system-ui,sans-serif";ui.fillStyle="#fff";
@@ -917,6 +945,16 @@ async function lock(){
    both irritating and a measurable drain on a phone in a queue */
 const buzz=ms=>{try{navigator.vibrate&&navigator.vibrate(ms);}catch(e){}};
 
+/* The recording has a pause control top-right. The tap has to be caught
+   before the physics step runs, or it is spent as a jump first. */
+const PB=()=>({x:VW-36,y:36+SAT,r:19});
+function pauseHit(){
+  if(G.state!=="play"||paused||In.tap<1||!In.pos)return false;
+  const b=PB();
+  if(Math.hypot(In.pos.x-b.x,In.pos.y-b.y)>b.r+10)return false;
+  In.tap--;paused=true;S.suspend();return true;
+}
+
 /* ---------- loop ---------- */
 let last=performance.now(),acc=0;const STEP=1/120;
 /* Nobody knows what half a million people will be holding. Rather than
@@ -935,6 +973,7 @@ function quality(raw){
 function frame(now){
   const raw=Math.min(.05,(now-last)/1000);last=now;
   quality(raw);
+  pauseHit();
   G.t+=raw;G.st+=raw;
   const held=(paused||(TOUCH&&!PORTRAIT))&&G.state==="play";
   if(G.state==="play"&&!held){acc+=raw*G.ts;let n=0;
