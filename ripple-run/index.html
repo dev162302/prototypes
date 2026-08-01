@@ -107,6 +107,7 @@ const LEVELS=[
     {g:0,y:350,w:140,d:270},{g:175,y:430,w:170,d:190},{g:0,y:500,w:150,d:34},
     {g:165,y:440,w:160,d:190},{g:0,y:380,w:150,d:250},{g:180,y:470,w:200,d:200},
     {g:0,y:530,w:180,d:34},{g:150,y:470,w:220,d:190},{g:0,y:500,w:460,d:32}],
+   walls:[[430,450,2,17],[1035,430,2,17],[1520,440,2,17]],
    stars:[[620,300],[900,380],[1140,320],[1420,340],[1700,290],
           [2020,370],[2320,300],[2620,390],[2900,410]] },
 
@@ -116,6 +117,7 @@ const LEVELS=[
     {g:185,y:470,w:160,d:200},{g:0,y:530,w:140,d:34},{g:180,y:440,w:150,d:190},
     {g:0,y:380,w:140,d:250},{g:0,y:320,w:130,d:310},{g:190,y:450,w:170,d:190},
     {g:175,y:510,w:160,d:36},{g:0,y:440,w:150,d:200},{g:0,y:500,w:440,d:32}],
+   walls:[[585,450,2,17],[1060,470,2,17],[1540,440,2,17]],
    stars:[[600,380],[880,320],[1180,340],[1460,290],[1760,285],
           [2020,250],[2340,350],[2640,400],[2960,350]] },
 
@@ -124,6 +126,7 @@ const LEVELS=[
     {g:0,y:410,w:140,d:210},{g:185,y:340,w:150,d:290},{g:0,y:420,w:140,d:210},
     {g:195,y:500,w:160,d:36},{g:0,y:430,w:150,d:200},{g:180,y:370,w:150,d:260},
     {g:0,y:450,w:150,d:190},{g:175,y:500,w:200,d:36},{g:0,y:470,w:420,d:32}],
+   walls:[[390,420,2,17],[880,410,2,17],[1355,420,2,17]],
    stars:[[560,330],[820,300],[1120,300],[1420,240],[1700,300],
           [2000,380],[2280,260],[2600,330],[2900,370]] },
 
@@ -132,6 +135,7 @@ const LEVELS=[
     {g:195,y:460,w:150,d:180},{g:0,y:520,w:130,d:34},{g:190,y:430,w:140,d:200},
     {g:185,y:360,w:150,d:270},{g:0,y:420,w:140,d:210},{g:195,y:490,w:150,d:36},
     {g:0,y:420,w:140,d:210},{g:180,y:470,w:190,d:190},{g:0,y:500,w:420,d:32}],
+   walls:[[370,440,2,17],[835,460,2,17],[1305,430,2,17]],
    stars:[[560,350],[840,290],[1140,320],[1420,280],[1720,260],
           [2020,320],[2320,340],[2620,320],[2900,390]] },
 
@@ -141,6 +145,7 @@ const LEVELS=[
     {g:205,y:450,w:130,d:180},{g:200,y:520,w:130,d:36},{g:0,y:430,w:120,d:200},
     {g:0,y:360,w:120,d:270},{g:205,y:470,w:130,d:170},{g:200,y:400,w:130,d:230},
     {g:0,y:470,w:120,d:170},{g:195,y:510,w:170,d:36},{g:0,y:480,w:400,d:32}],
+   walls:[[550,430,2,17],[1005,450,2,17],[1910,470,2,17]],
    stars:[[520,340],[800,270],[1100,320],[1400,350],[1700,270],
           [2000,300],[2300,290],[2600,340],[2880,380]] },
 
@@ -149,6 +154,7 @@ const LEVELS=[
     {g:0,y:410,w:120,d:220},{g:200,y:490,w:130,d:36},{g:0,y:420,w:120,d:210},
     {g:0,y:350,w:120,d:280},{g:210,y:450,w:130,d:180},{g:200,y:380,w:120,d:250},
     {g:200,y:500,w:140,d:36},{g:0,y:430,w:130,d:200},{g:0,y:490,w:400,d:32}],
+   walls:[[1095,490,2,17],[1675,450,2,17],[2325,500,2,17]],
    stars:[[500,320],[780,250],[1080,290],[1380,298],[1660,260],
           [1960,290],[2260,310],[2560,300],[2840,370]] },
 
@@ -157,6 +163,7 @@ const LEVELS=[
     {g:210,y:440,w:120,d:190},{g:205,y:370,w:120,d:260},{g:0,y:440,w:110,d:190},
     {g:200,y:510,w:130,d:36},{g:0,y:430,w:120,d:200},{g:0,y:360,w:110,d:270},
     {g:210,y:460,w:130,d:170},{g:200,y:500,w:160,d:36},{g:0,y:480,w:400,d:32}],
+   walls:[[1705,510,2,17],[2275,460,2,17]],
    stars:[[480,330],[760,260],[1060,300],[1360,290],[1660,280],
           [1940,320],[2240,300],[2540,330],[2820,360]] }
 ];
@@ -178,11 +185,20 @@ function buildLevel(L){
   /* Each authored pickup becomes a tight cluster of three, so a ripple has
      something to travel along. A single pickup every 300px left the chain
      with nothing in reach and the mechanic did nothing. */
+  /* Walls of small bricks, from level 9 of the reference. Here they are the
+     reason the ripple exists rather than a nicety: the ball cannot pass one,
+     and one tap takes the whole wall down — a small action removing a large
+     obstacle, which is the campaign in a single verb. */
+  const bricks=[];
+  for(const w of (L.walls||[]))
+    for(let c=0;c<w[2];c++) for(let r=0;r<w[3];r++)
+      bricks.push({x:w[0]+c*BW, y:w[1]-(r+1)*BH, gone:false});
+
   const rings=[];
   for(const st of L.stars)
     for(const o of [-1,0,1])
       rings.push({x:st[0]+o*44, y:st[1]+Math.abs(o)*9, got:false});
-  return {blocks:bs, finish:lastB.x+lastB.w-170, stars:rings,
+  return {blocks:bs, bricks, finish:lastB.x+lastB.w-170, stars:rings,
           skin:SKINS[0], id:L.id, diff:L.diff};
 }
 
@@ -256,14 +272,14 @@ const G={
   t:0,st:0,
   li:0,L:null,
   worldX:0,bx:0,ball:null,parts:[],pops:[],waves:[],
-  got:0,score:0,chain:0,best:0,ripples:0,paused:false,
+  got:0,score:0,chain:0,best:0,ripples:0,bricks:0,stuck:0,paused:false,
 
   load(i){
     this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
     this.L=buildLevel(LEVELS[this.li]);
     SPEED=SPEEDS[this.L.diff];
     this.worldX=0;this.bx=BALL_X();this.got=0;this.score=0;
-    this.chain=0;this.best=0;this.ripples=0;
+    this.chain=0;this.best=0;this.ripples=0;this.bricks=0;this.stuck=0;
     this.parts=[];this.pops=[];this.waves=[];
     const b0=this.L.blocks[0];
     this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
@@ -315,6 +331,7 @@ function surfaceAt(wx){
    rather than as a caption over the top.
    ============================================================ */
 const RIP_R=190, CHAIN_R=120, RIP_DEPTH=9;
+const BW=28, BH=16;                 /* brick size in a wall */
 
 function ripple(ox,oy){
   G.chain=0; G.ripples++;
@@ -325,6 +342,19 @@ function ripple(ox,oy){
   while(frontier.length&&depth<RIP_DEPTH){
     const next=[], D=depth;
     for(const f of frontier){
+      for(const k of G.L.bricks){
+        if(k.gone)continue;
+        const cx=k.x+BW/2, cy=k.y+BH/2;
+        if(Math.hypot(cx-f[0],cy-f[1])>f[2])continue;
+        k.gone=true;G.bricks++;
+        G.score+=2;
+        next.push([cx,cy,CHAIN_R]);
+        G.waves.push({x:cx,y:cy,r:3,max:CHAIN_R*.8,a:.8,w:2.2,d:D*.07,v:520});
+        for(let i=0;i<5;i++){const a=rnd(0,TAU),sp=rnd(50,200);
+          G.parts.push({x:cx,y:cy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-60,
+            life:rnd(.35,.8),max:.8,r:rnd(2.5,5),c:G.L.skin.rail,world:true});}
+      }
+
       for(const g of G.L.stars){
         if(g.got)continue;
         if(Math.hypot(g.x-f[0],g.y-f[1])>f[2])continue;
@@ -357,6 +387,12 @@ function step(dt){
     if(b.y-BR>=blk.y+blk.d) continue;        /* below the block entirely */
     if(G.bx+BR<=blk.x && want+BR>blk.x) want=blk.x-BR;
   }
+  for(const k of G.L.bricks){
+    if(k.gone) continue;
+    if(b.y+BR<=k.y || b.y-BR>=k.y+BH) continue;
+    if(G.bx+BR<=k.x && want+BR>k.x) want=k.x-BR;
+  }
+  G.stuck = (want<=G.bx+0.01) ? G.stuck+dt : 0;
   G.bx=want; G.worldX=G.bx-BX;
 
   if(In.tap>0){
@@ -495,6 +531,14 @@ function drawWorld(){
   drawLabel(300,G.L.blocks[0].y,G.L.id);
   drawLabel(G.L.finish+150,G.L.blocks[G.L.blocks.length-1].y,G.L.id);
 
+  for(const k of G.L.bricks){
+    if(k.gone)continue;
+    const x=k.x-G.worldX;
+    if(x<-60||x>VW+60)continue;
+    x2.fillStyle=sk.rail;
+    roundRect(x+1.5,k.y+1.5,BW-3,BH-3,3);x2.fill();
+  }
+
   /* the pickup is the circle from the logo, not a star */
   for(const st of G.L.stars){
     if(st.got)continue;
@@ -598,9 +642,9 @@ function drawLogo(cy){
 }
 
 /* the sawtooth band the level number sits on */
-function zigBand(cy,h,label){
+function zigBand(cy,h,label,col){
   const amp=13, per=26;
-  x2.fillStyle="#0d63cf";
+  x2.fillStyle=col||"#0d63cf";
   x2.fillRect(-40,cy-h/2,VW+80,h);
   /* the sawtooth edges, top and bottom */
   for(const [y,dir] of [[cy-h/2,-1],[cy+h/2,1]]){
@@ -670,16 +714,28 @@ function draw(){
     /* the level grid for the selected tier */
     const list=LEVELS.map((L,i)=>({L,i})).filter(o=>o.L.diff===G.tier);
     const cols=3, cw=96, ch=96, gx=(VW-cols*cw-(cols-1)*16)/2, gy=ty+52;
+    /* the reference gates levels: done, next, locked. It is the spine of the
+       whole retention loop, so it is here too. */
+    const reached=i=>i===0||(Save.marks[i-1]||0)>0;
     list.forEach((o,k)=>{
       const cx=gx+(k%cols)*(cw+16), cy=gy+Math.floor(k/cols)*(ch+16);
+      const m=Save.marks[o.i]||0, open=reached(o.i);
       roundRect(cx,cy,cw,ch,10);
-      x2.fillStyle=UI.tile;x2.fill();
-      x2.fillStyle="#ffffff";x2.font="600 34px ui-sans-serif,system-ui,sans-serif";
-      x2.fillText(String(o.i+1),cx+cw/2,cy+ch*.40);
-      const m=Save.marks[o.i]||0;
-      for(let j=0;j<m;j++) tick(cx+cw/2+(j-(m-1)/2)*22,cy+ch*.74,9,"#ffffff");
+      x2.fillStyle = m>0 ? UI.tile : open ? "#1668d6" : "#16233d";
+      x2.fill();
+      if(!open){
+        x2.strokeStyle="rgba(127,212,255,.34)";x2.lineWidth=4;
+        x2.beginPath();x2.arc(cx+cw/2,cy+ch*.40,11,Math.PI,0);x2.stroke();
+        x2.fillStyle="rgba(127,212,255,.34)";
+        roundRect(cx+cw/2-15,cy+ch*.40,30,24,4);x2.fill();
+      }else{
+        x2.fillStyle="#ffffff";x2.font="600 34px ui-sans-serif,system-ui,sans-serif";
+        x2.fillText(String(o.i+1),cx+cw/2,cy+ch*.40);
+        for(let j=0;j<m;j++) tick(cx+cw/2+(j-(m-1)/2)*22,cy+ch*.74,9,"#ffffff");
+      }
+      o.open=open;
     });
-    G.menuHit=list.map((o,k)=>({i:o.i,
+    G.menuHit=list.map((o,k)=>({i:o.i,open:o.open,
       x:gx+(k%cols)*(cw+16), y:gy+Math.floor(k/cols)*(ch+16), w:cw, h:ch}));
     G.tabHit=TIERS.map((t,i)=>({i,x:VW/2-tw*1.5-10+i*(tw+10),y:ty-19,w:tw,h:38}));
 
@@ -701,7 +757,15 @@ function draw(){
     x2.fillText(String(G.score),30,44+SAT);
     x2.font="500 12px ui-sans-serif,system-ui,sans-serif";
     x2.fillStyle="rgba(127,212,255,.55)";
-    x2.fillText("◎ "+G.got+"    ~ "+G.ripples+(G.ripples===1?" RIPPLE":" RIPPLES"),31,72+SAT);
+    x2.fillText("◎ "+G.got+"   ▦ "+G.bricks+"   ~ "+G.ripples+(G.ripples===1?" RIPPLE":" RIPPLES"),31,72+SAT);
+    if(G.stuck>1.1&&!G.paused){
+      x2.save();
+      x2.globalAlpha=clamp((G.stuck-1.1)*2,0,1);
+      x2.textAlign="center";x2.textBaseline="middle";
+      x2.fillStyle=BRIGHT;x2.font="600 17px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("TAP TWICE TO RIPPLE THROUGH",VW/2,VH*.30);
+      x2.restore();
+    }
     if(G.chain>1){
       x2.fillStyle=BRIGHT;x2.font="600 17px ui-sans-serif,system-ui,sans-serif";
       x2.fillText("CHAIN ×"+G.chain,31,98+SAT);
@@ -722,7 +786,7 @@ function draw(){
     x2.globalAlpha=clamp((G.st-.5)*2.4,0,1);
     x2.fillStyle=BG;x2.fillRect(-ox/scale,-oy/scale,VW+ox*2/scale,VH+oy*2/scale);
     drawLogo(VH*.17+SAT);
-    ribbon(VH*.35,64,"RUN");
+    ribbon(VH*.35,64,"RUN","#c9453f");
     x2.textAlign="center";x2.textBaseline="middle";
     x2.fillStyle="#ffffff";x2.font="300 34px ui-sans-serif,system-ui,sans-serif";
     x2.fillText(G.L.id,VW/2,VH*.35+58);
@@ -763,7 +827,7 @@ function draw(){
     x2.globalAlpha=1;
     starTotal();
     drawLogo(VH*.20);
-    zigBand(VH*.40,86,"Level "+(G.li+1));
+    zigBand(VH*.40,86,"Level "+(G.li+1),"#2f9e5f");
     if(G.st>.7){
       x2.globalAlpha=clamp((G.st-.7)*2,0,1);
       x2.textAlign="center";x2.textBaseline="middle";
@@ -806,7 +870,7 @@ function taps(){
   if(G.state==="menu"){
     const p=In.pos;
     for(const t of (G.tabHit||[])) if(inBox(p,t)){ In.tap=0;G.tier=t.i;return; }
-    for(const c of (G.menuHit||[])) if(inBox(p,c)){ In.tap=0;G.start(c.i);return; }
+    for(const c of (G.menuHit||[])) if(inBox(p,c)){ In.tap=0; if(c.open)G.start(c.i); return; }
     In.tap=0;return;
   }
   if(G.state==="dead"&&G.st>.5){ In.tap=0;G.start(G.li);return; }
