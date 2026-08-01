@@ -250,14 +250,14 @@ const G={
   tier:0,
   t:0,st:0,
   li:0,L:null,
-  worldX:0,ball:null,parts:[],pops:[],
+  worldX:0,bx:0,ball:null,parts:[],pops:[],
   got:0,paused:false,
 
   load(i){
     this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
     this.L=buildLevel(LEVELS[this.li]);
     SPEED=SPEEDS[this.L.diff];
-    this.worldX=0;this.got=0;this.parts=[];this.pops=[];
+    this.worldX=0;this.bx=BALL_X();this.got=0;this.parts=[];this.pops=[];
     const b0=this.L.blocks[0];
     this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
   },
@@ -266,7 +266,7 @@ const G={
     /* ?x=PX drops you that far into the level, for looking at the back half */
     const wx=+(QS.get("x")||0);
     if(wx>0){
-      this.worldX=wx;
+      this.worldX=wx;this.bx=wx+BALL_X();
       const b=surfaceAt(this.worldX+BALL_X());
       if(b){this.ball.y=b.y-BR;this.ball.vy=0;this.ball.grounded=true;}
     }
@@ -301,7 +301,18 @@ function surfaceAt(wx){
 
 function step(dt){
   const b=G.ball, BX=BALL_X();
-  G.worldX+=SPEED*dt;
+
+  /* The ball is stopped by a wall, not killed by it. It advances through the
+     world and the camera follows; running into the side of a block just holds
+     it there until you jump. Ending the run on a wall was a cheap death that
+     the real game does not have. */
+  let want=G.bx+SPEED*dt;
+  for(const blk of G.L.blocks){
+    if(b.y+BR<=blk.y+1) continue;            /* clear of the top, no wall here */
+    if(b.y-BR>=blk.y+blk.d) continue;        /* below the block entirely */
+    if(G.bx+BR<=blk.x && want+BR>blk.x) want=blk.x-BR;
+  }
+  G.bx=want; G.worldX=G.bx-BX;
 
   if(In.tap>0){
     In.tap--;
@@ -314,14 +325,9 @@ function step(dt){
   b.grounded=false;
   b.trail.unshift(b.y); if(b.trail.length>50)b.trail.pop();
 
-  const wx=G.worldX+BX;
+  const wx=G.bx;
   for(const blk of G.L.blocks){
     if(wx+BR<blk.x || wx-BR>blk.x+blk.w) continue;
-
-    /* the side of a block is solid */
-    if(b.y+BR>blk.y+7 && wx+BR>blk.x && wx-BR<blk.x+8 && b.y-BR<blk.y+blk.d){
-      G.die(); return;
-    }
     if(b.vy>=0 && prevY+BR<=blk.y+2 && b.y+BR>=blk.y){
       b.y=blk.y-BR;b.vy=0;b.jumps=0;b.grounded=true;
       if(prevY+BR<blk.y-1)S.land();

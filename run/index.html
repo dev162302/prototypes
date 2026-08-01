@@ -341,14 +341,14 @@ const GRAV=2600, JUMP=-830, BR=13;
 const BALL_X=()=>VW*0.34;          /* the ball sits here; the world moves */
 const G={
   state:"title",t:0,st:0,ts:1,slow:0,
-  worldX:0,speed:300,score:0,stars:0,combo:0,bestCombo:0,gates:0,
+  worldX:0,bx:0,speed:300,score:0,stars:0,combo:0,bestCombo:0,gates:0,
   chain:0,bestChain:0,calmed:0,
   shake:0,flash:0,aberr:.0018,
   ball:null,plats:[],gems:[],swaps:[],rings:[],parts:[],waves:[],
   nextX:0,newBest:false,reason:"",
 
   reset(){
-    this.worldX=0;this.speed=300;this.score=0;this.stars=0;
+    this.worldX=0;this.bx=BALL_X();this.speed=300;this.score=0;this.stars=0;
     this.combo=0;this.bestCombo=0;this.gates=0;
     this.chain=0;this.bestChain=0;this.calmed=0;
     this.newBest=false;this.reason="";
@@ -368,7 +368,7 @@ const G={
     if(sk>0){
       for(let i=0;i<sk;i++)this.gen();
       const p=this.plats[Math.min(sk,this.plats.length-1)];
-      this.worldX=p.x-BALL_X()+24;
+      this.worldX=p.x-BALL_X()+24;this.bx=this.worldX+BALL_X();
       this.ball.y=p.y-BR;this.ball.grounded=true;this.ball.vy=0;this.ball.on=p;
     }
   },
@@ -552,7 +552,19 @@ function ripple(ox,oy){
 function step(dt){
   const b=G.ball, BX=BALL_X();
   G.speed=lerp(300,470,clamp(G.score/45,0,1));
-  G.worldX+=G.speed*dt;
+
+  /* A wall stops the ball, it does not kill it. The camera follows the ball
+     rather than scrolling past it, so pressing against a deck's face just
+     holds you there until you jump. */
+  let want=G.bx+G.speed*dt;
+  for(const p of G.plats){
+    if(p.alpha<=0) continue;
+    const depth=p.depth||160;
+    if(b.y+BR<=p.y+1) continue;
+    if(b.y-BR>=p.y+depth) continue;
+    if(G.bx+BR<=p.x && want+BR>p.x) want=p.x-BR;
+  }
+  G.bx=want; G.worldX=G.bx-BX;
 
   /* one per physics step, so a stacked pair still reads as two distinct
      inputs rather than both resolving at the same position */
@@ -604,12 +616,6 @@ function step(dt){
       if(BX+BR*.6>s0 && BX-BR*.6<s1 && b.y+BR>p.y-19 && b.y-BR<p.y+6){
         G.die("spikes"); return;
       }
-    }
-
-    /* run into the side of a block and the run is over. Checked below the
-       surface by a margin so landing on the corner is still a landing. */
-    if(b.y+BR>p.y+7 && BX+BR>sx && BX-BR<sx+8 && b.y-BR<p.y+p.depth){
-      G.die("blocked"); return;
     }
 
     if(b.vy>=0 && prevY+BR<=p.y+2 && b.y+BR>=p.y){
@@ -919,7 +925,7 @@ function drawUI(t){
   if(G.state==="dead"&&G.st>.45){
     ui.save();ui.globalAlpha=clamp((G.st-.45)*2.2,0,1);
     scrim(.72);ui.textAlign="left";
-    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":G.reason==="blocked"?"BLOCKED":"MISSED"),
+    trk(G.newBest?"NEW BEST":(G.reason==="spikes"?"SPIKES":"MISSED"),
       VW/2,VH*.34,10,500,G.newBest?"#fff":"rgba(255,255,255,.5)",5,"center");
     ui.textAlign="center";
     ui.font="200 92px ui-sans-serif,system-ui,sans-serif";ui.fillStyle="#fff";
