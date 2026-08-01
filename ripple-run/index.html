@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#00103f">
+<title>RIPPLE RUN — Novo Nordisk</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#000a20;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;
+    display:grid;place-items:center}
+  #frame{display:flex;flex-direction:column;align-items:center;gap:16px}
+  /* On a phone the stage is the whole screen. On anything wider it becomes a
+     phone-shaped panel: the play column is a fixed 420 units, so letting it
+     stretch to a desktop width scaled the whole world up by ~2.3x and spilled
+     the terrain across the page. */
+  #stage{position:relative;width:100vw;height:100dvh;background:#00103f;overflow:hidden}
+  #cap{display:none}
+  @media (min-width:680px) and (min-height:520px){
+    #stage{height:min(92dvh,900px);width:calc(min(92dvh,900px) * 0.472);
+      border-radius:28px;box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 1px rgba(127,212,255,.10)}
+    #cap{display:block;font:500 10px/1 ui-sans-serif,system-ui,sans-serif;
+      letter-spacing:.26em;color:#3f5f86;text-transform:uppercase}
+  }
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #sa{position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;visibility:hidden;
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+</style>
+</head>
+<body>
+<div id="frame">
+  <div id="stage"><canvas id="c"></canvas></div>
+  <p id="cap">Novo Nordisk · Gamescom 2026 · Ripple Run</p>
+</div>
+<div id="sa"></div>
+<script>
+(() => {
+"use strict";
+/* ============================================================
+   RIPPLE RUN — Novo Nordisk, Gamescom 2026
+
+   A straight reconstruction of the game in the reference recording,
+   not the branded build. Everything here is measured off the video:
+   the palette was sampled from frames, the terrain grammar and the
+   edge treatment were read off frame-level crops.
+
+   Deliberately Canvas 2D. The reference is flat vector art with no
+   glow anywhere, so the WebGL bloom pipeline used by the branded
+   build would be actively wrong here.
+   ============================================================ */
+
+const cv=document.getElementById("c"), x2=cv.getContext("2d");
+const saEl=document.getElementById("sa");
+const TAU=Math.PI*2;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
+const rnd=(a,b)=>a+Math.random()*(b-a), RI=(a,b)=>Math.floor(rnd(a,b+1));
+
+/* ---------- palette, sampled from the recording ---------- */
+const BG="#00103f";                 /* the brand deep */
+const BRIGHT="#7fd4ff";
+/* one identity, not four: this is a branded build and the world does not
+   get to change colour on it */
+const SKINS=[{rail:"#7fd4ff",body:"#0a4ea8"}];
+const UI={ribbon:"#0d63cf",tile:"#0a4ea8",tileDim:"#083a7d",
+  easy:"#0d63cf",med:"#0a4ea8",hard:"#012a70",gold:"#7fd4ff",grey:"#123a72"};
+const CONFETTI=["#7fd4ff","#0d63cf","#f4f9ff","#0a4ea8","#4ea8ff"];
+
+/* ---------- geometry, measured off frame crops ---------- */
+const COL=420;                      /* play column width, in game units */
+const RH=14;                        /* rail cap height */
+const SC=7;                         /* how deep the scallops bite */
+const SPER=13;                      /* scallop spacing */
+const BR=11;                        /* ball radius */
+const GRAV=2600, JUMP=-830, JUMP2=-730;   /* apex 132px, double ~235 */
+let SPEED=340;
+const BALL_X=()=>VW*0.30;
+
+/* ============================================================
+   LEVELS
+   A block is {g,y,w,d}: the gap in front of it, its top surface,
+   its width and how far its body runs down. g:0 means it sits
+   flush against the block before it, which is how the recording
+   builds a step.
+   ============================================================ */
+const LEVELS=[
+ /* EASY */
+ { id:"001", diff:0, blocks:[
+    {g:0,y:500,w:560,d:32},{g:140,y:500,w:220,d:34},{g:0,y:440,w:180,d:170},
+    {g:150,y:500,w:200,d:36},{g:0,y:440,w:160,d:180},{g:0,y:380,w:150,d:250},
+    {g:160,y:470,w:210,d:200},{g:0,y:520,w:170,d:34},{g:150,y:470,w:240,d:190},
+    {g:0,y:500,w:460,d:32}],
+   stars:[[700,410],[1120,360],[1500,290],[1900,320],[2380,380],[2740,410]] },
+
+ /* the level in the recording */
+ { id:"002", diff:0, blocks:[
+    {g:0,y:490,w:560,d:32},{g:0,y:430,w:200,d:150},{g:0,y:370,w:160,d:215},
+    {g:135,y:430,w:180,d:190},{g:0,y:490,w:170,d:32},{g:155,y:400,w:190,d:245},
+    {g:0,y:460,w:150,d:185},{g:170,y:520,w:210,d:36},{g:0,y:430,w:160,d:215},
+    {g:160,y:480,w:200,d:200},{g:0,y:520,w:160,d:36},{g:145,y:460,w:250,d:200},
+    {g:0,y:490,w:480,d:32}],
+   stars:[[700,330],[880,270],[1180,330],[1520,310],[1830,300],
+          [2200,330],[2430,330],[2760,380],[3080,400],[3350,390]] },
+
+ { id:"003", diff:0, blocks:[
+    {g:0,y:500,w:520,d:32},{g:0,y:450,w:150,d:150},{g:0,y:400,w:140,d:210},
+    {g:0,y:350,w:140,d:270},{g:175,y:430,w:170,d:190},{g:0,y:500,w:150,d:34},
+    {g:165,y:440,w:160,d:190},{g:0,y:380,w:150,d:250},{g:180,y:470,w:200,d:200},
+    {g:0,y:530,w:180,d:34},{g:150,y:470,w:220,d:190},{g:0,y:500,w:460,d:32}],
+   stars:[[620,300],[900,380],[1140,320],[1420,340],[1700,290],
+          [2020,370],[2320,300],[2620,390],[2900,410]] },
+
+ /* MEDIUM */
+ { id:"004", diff:1, blocks:[
+    {g:0,y:500,w:500,d:32},{g:175,y:450,w:150,d:34},{g:0,y:390,w:140,d:220},
+    {g:185,y:470,w:160,d:200},{g:0,y:530,w:140,d:34},{g:180,y:440,w:150,d:190},
+    {g:0,y:380,w:140,d:250},{g:0,y:320,w:130,d:310},{g:190,y:450,w:170,d:190},
+    {g:175,y:510,w:160,d:36},{g:0,y:440,w:150,d:200},{g:0,y:500,w:440,d:32}],
+   stars:[[600,380],[880,320],[1180,340],[1460,290],[1760,285],
+          [2020,250],[2340,350],[2640,400],[2960,350]] },
+
+ { id:"005", diff:1, blocks:[
+    {g:0,y:490,w:480,d:32},{g:0,y:420,w:150,d:180},{g:190,y:490,w:150,d:34},
+    {g:0,y:410,w:140,d:210},{g:185,y:340,w:150,d:290},{g:0,y:420,w:140,d:210},
+    {g:195,y:500,w:160,d:36},{g:0,y:430,w:150,d:200},{g:180,y:370,w:150,d:260},
+    {g:0,y:450,w:150,d:190},{g:175,y:500,w:200,d:36},{g:0,y:470,w:420,d:32}],
+   stars:[[560,330],[820,300],[1120,300],[1420,240],[1700,300],
+          [2000,380],[2280,260],[2600,330],[2900,370]] },
+
+ { id:"006", diff:1, blocks:[
+    {g:0,y:500,w:460,d:32},{g:0,y:440,w:140,d:190},{g:0,y:380,w:130,d:250},
+    {g:195,y:460,w:150,d:180},{g:0,y:520,w:130,d:34},{g:190,y:430,w:140,d:200},
+    {g:185,y:360,w:150,d:270},{g:0,y:420,w:140,d:210},{g:195,y:490,w:150,d:36},
+    {g:0,y:420,w:140,d:210},{g:180,y:470,w:190,d:190},{g:0,y:500,w:420,d:32}],
+   stars:[[560,350],[840,290],[1140,320],[1420,280],[1720,260],
+          [2020,320],[2320,340],[2620,320],[2900,390]] },
+
+ /* HARD */
+ { id:"007", diff:2, blocks:[
+    {g:0,y:490,w:440,d:32},{g:200,y:430,w:130,d:34},{g:0,y:360,w:120,d:270},
+    {g:205,y:450,w:130,d:180},{g:200,y:520,w:130,d:36},{g:0,y:430,w:120,d:200},
+    {g:0,y:360,w:120,d:270},{g:205,y:470,w:130,d:170},{g:200,y:400,w:130,d:230},
+    {g:0,y:470,w:120,d:170},{g:195,y:510,w:170,d:36},{g:0,y:480,w:400,d:32}],
+   stars:[[520,340],[800,270],[1100,320],[1400,350],[1700,270],
+          [2000,300],[2300,290],[2600,340],[2880,380]] },
+
+ { id:"008", diff:2, blocks:[
+    {g:0,y:480,w:420,d:32},{g:0,y:410,w:120,d:220},{g:205,y:340,w:120,d:290},
+    {g:0,y:410,w:120,d:220},{g:200,y:490,w:130,d:36},{g:0,y:420,w:120,d:210},
+    {g:0,y:350,w:120,d:280},{g:210,y:450,w:130,d:180},{g:200,y:380,w:120,d:250},
+    {g:200,y:500,w:140,d:36},{g:0,y:430,w:130,d:200},{g:0,y:490,w:400,d:32}],
+   stars:[[500,320],[780,250],[1080,290],[1380,298],[1660,260],
+          [1960,290],[2260,310],[2560,300],[2840,370]] },
+
+ { id:"009", diff:2, blocks:[
+    {g:0,y:490,w:400,d:32},{g:200,y:420,w:120,d:210},{g:0,y:350,w:110,d:280},
+    {g:210,y:440,w:120,d:190},{g:205,y:370,w:120,d:260},{g:0,y:440,w:110,d:190},
+    {g:200,y:510,w:130,d:36},{g:0,y:430,w:120,d:200},{g:0,y:360,w:110,d:270},
+    {g:210,y:460,w:130,d:170},{g:200,y:500,w:160,d:36},{g:0,y:480,w:400,d:32}],
+   stars:[[480,330],[760,260],[1060,300],[1360,290],[1660,280],
+          [1940,320],[2240,300],[2540,330],[2820,360]] }
+];
+const SPEEDS=[340,385,430];      /* one per difficulty tier */
+const TIERS=["EASY","MEDIUM","HARD"];
+
+
+/* turn the compact level data into absolute blocks */
+function buildLevel(L){
+  const bs=[]; let x=-140;
+  for(const b of L.blocks){
+    x+=b.g;
+    bs.push({x,y:b.y,w:b.w,d:b.d});
+    x+=b.w;
+  }
+  /* the finish sits on the closing block. Placing it past the end of the
+     terrain meant running off into the void before ever reaching it. */
+  const lastB=bs[bs.length-1];
+  /* Each authored pickup becomes a tight cluster of three, so a ripple has
+     something to travel along. A single pickup every 300px left the chain
+     with nothing in reach and the mechanic did nothing. */
+  const rings=[];
+  for(const st of L.stars)
+    for(const o of [-1,0,1])
+      rings.push({x:st[0]+o*44, y:st[1]+Math.abs(o)*9, got:false});
+  return {blocks:bs, finish:lastB.x+lastB.w-170, stars:rings,
+          skin:SKINS[0], id:L.id, diff:L.diff};
+}
+
+/* ---------- viewport ---------- */
+let VW=COL,VH=900,scale=1,dpr=1,ox=0,oy=0,SAT=0,SAB=0;
+function resize(){
+  const r=cv.getBoundingClientRect();
+  const w=Math.max(1,Math.round(r.width)), h=Math.max(1,Math.round(r.height));
+  dpr=Math.min(devicePixelRatio||1,2);
+  VW=COL; VH=Math.round(clamp(VW*(h/w),560,1500));
+  scale=Math.min(w/VW,h/VH); ox=(w-VW*scale)/2; oy=(h-VH*scale)/2;
+  const cs=getComputedStyle(saEl);
+  SAT=(parseFloat(cs.paddingTop)||0)/scale;
+  SAB=(parseFloat(cs.paddingBottom)||0)/scale;
+  const cw=Math.round(w*dpr), ch=Math.round(h*dpr);
+  if(cv.width!==cw||cv.height!==ch){cv.width=cw;cv.height=ch;}
+}
+addEventListener("resize",resize);
+addEventListener("orientationchange",()=>setTimeout(resize,150));
+if(window.ResizeObserver)new ResizeObserver(()=>resize()).observe(cv);
+
+/* ---------- sound ---------- */
+const S={ctx:null,on:true,
+ init(){if(this.ctx)return;try{this.ctx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}},
+ resume(){if(this.ctx&&this.ctx.state==="suspended")this.ctx.resume();},
+ suspend(){try{this.ctx&&this.ctx.state==="running"&&this.ctx.suspend();}catch(e){}},
+ tone(f,dur,vol,type,slide){
+  if(!this.on||!this.ctx)return;
+  const t=this.ctx.currentTime,g=this.ctx.createGain(),o=this.ctx.createOscillator();
+  o.type=type||"sine";o.frequency.setValueAtTime(f,t);
+  if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,f+slide),t+dur*.9);
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol,t+.01);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g);g.connect(this.ctx.destination);o.start(t);o.stop(t+dur+.02);},
+ jump(){this.tone(300,.09,.06,"sine",-90);},
+ dbl(){this.tone(430,.10,.06,"sine",140);},
+ land(){this.tone(150,.06,.05,"sine",-40);},
+ star(n){this.tone(660*Math.pow(2,Math.min(n,7)/12),.20,.05,"triangle");},
+ die(){this.tone(160,.5,.10,"sawtooth",-110);},
+ win(){[0,4,7,12].forEach((s,i)=>setTimeout(()=>this.tone(440*Math.pow(2,s/12),.35,.06,"triangle"),i*110));}
+};
+
+/* ---------- input ---------- */
+const In={tap:0,pos:null};
+addEventListener("keydown",e=>{
+  if(["Space","ArrowUp","Enter"].includes(e.code))e.preventDefault();
+  if(e.repeat)return;
+  if(["Space","ArrowUp","Enter"].includes(e.code))In.tap=Math.min(In.tap+1,3);
+  S.init();S.resume();});
+const pt=e=>{const r=cv.getBoundingClientRect();
+  return{x:(e.clientX-r.left-ox)/scale,y:(e.clientY-r.top-oy)/scale};};
+cv.addEventListener("pointerdown",e=>{
+  In.tap=Math.min(In.tap+1,3);In.pos=pt(e);S.init();S.resume();
+  try{cv.setPointerCapture(e.pointerId);}catch(x){}});
+cv.addEventListener("contextmenu",e=>e.preventDefault());
+
+/* ---------- save ---------- */
+const QS=new URLSearchParams(location.search||location.hash.replace(/^#/,""));
+const KEY="csrun.replica.v1";
+let Save={stars:0,level:0,marks:{}};
+try{Object.assign(Save,JSON.parse(localStorage.getItem(KEY)||"{}"));}catch(e){}
+const persist=()=>{try{localStorage.setItem(KEY,JSON.stringify(Save));}catch(e){}};
+
+/* ============================================================
+   GAME
+   ============================================================ */
+const G={
+  state:"menu",          /* menu | play | dead | done */
+  tier:0,
+  t:0,st:0,
+  li:0,L:null,
+  worldX:0,bx:0,ball:null,parts:[],pops:[],waves:[],
+  got:0,score:0,chain:0,best:0,ripples:0,paused:false,
+
+  load(i){
+    this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
+    this.L=buildLevel(LEVELS[this.li]);
+    SPEED=SPEEDS[this.L.diff];
+    this.worldX=0;this.bx=BALL_X();this.got=0;this.score=0;
+    this.chain=0;this.best=0;this.ripples=0;
+    this.parts=[];this.pops=[];this.waves=[];
+    const b0=this.L.blocks[0];
+    this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
+  },
+  start(i){
+    this.load(i);this.state="play";this.st=0;this.paused=false;
+    /* ?x=PX drops you that far into the level, for looking at the back half */
+    const wx=+(QS.get("x")||0);
+    if(wx>0){
+      this.worldX=wx;this.bx=wx+BALL_X();
+      const b=surfaceAt(this.worldX+BALL_X());
+      if(b){this.ball.y=b.y-BR;this.ball.vy=0;this.ball.grounded=true;}
+    }
+  },
+  die(){ if(this.state!=="play")return;
+    this.state="dead";this.st=0;S.die();
+    const c=this.L.skin.rail;
+    for(let i=0;i<26;i++){const a=rnd(0,TAU),s=rnd(70,360);
+      this.parts.push({x:BALL_X(),y:this.ball.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+        life:rnd(.35,.9),max:.9,r:rnd(2,5),c});}
+  },
+  win(){ if(this.state!=="play")return;
+    this.state="done";this.st=0;S.win();
+    /* the app awards up to three ticks a level; here they scale with how
+       much of the level's star line you actually picked up */
+    const frac=this.got/Math.max(1,this.L.stars.length);
+    const marks=frac>=.99?3:frac>=.6?2:1;
+    Save.marks[this.li]=Math.max(Save.marks[this.li]||0,marks);
+    Save.stars+=this.got; Save.level=Math.max(Save.level,this.li+1); persist();
+    for(let i=0;i<90;i++)
+      this.parts.push({x:rnd(0,VW),y:rnd(-40,VH*.5),vx:rnd(-40,40),vy:rnd(30,180),
+        life:rnd(1.2,2.6),max:2.6,r:rnd(3,7),c:CONFETTI[RI(0,CONFETTI.length-1)],conf:true});
+  }
+};
+
+/* the surface the ball would stand on at a given world x, or null over a pit */
+function surfaceAt(wx){
+  for(const b of G.L.blocks)
+    if(wx>=b.x && wx<=b.x+b.w) return b;
+  return null;
+}
+
+/* ============================================================
+   THE RIPPLE
+   One tap, a wider response. The circle wakes what it reaches and
+   everything it wakes sends out a circle of its own; each step
+   outward is worth more than the last, so a tap that spreads beats
+   several that do not. The campaign line stated as a scoring rule
+   rather than as a caption over the top.
+   ============================================================ */
+const RIP_R=190, CHAIN_R=120, RIP_DEPTH=9;
+
+function ripple(ox,oy){
+  G.chain=0; G.ripples++;
+  for(let i=0;i<3;i++)
+    G.waves.push({x:ox,y:oy,r:6,max:RIP_R+i*16,a:1-i*.22,w:4.5-i*1.1,d:i*.05,v:620});
+
+  let frontier=[[ox,oy,RIP_R]], depth=0;
+  while(frontier.length&&depth<RIP_DEPTH){
+    const next=[], D=depth;
+    for(const f of frontier){
+      for(const g of G.L.stars){
+        if(g.got)continue;
+        if(Math.hypot(g.x-f[0],g.y-f[1])>f[2])continue;
+        g.got=true;G.got++;G.chain++;
+        G.score+=G.chain;                       /* each step outward pays more */
+        const k=G.chain;setTimeout(()=>S.star(k-1),D*70);
+        next.push([g.x,g.y,CHAIN_R]);
+        G.waves.push({x:g.x,y:g.y,r:4,max:CHAIN_R,a:.9,w:2.6,d:D*.07,v:520});
+        G.pops.push({x:g.x,y:g.y,life:.85,n:k});
+        for(let i=0;i<6;i++){const a=rnd(0,TAU),sp=rnd(40,170);
+          G.parts.push({x:g.x,y:g.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+            life:rnd(.3,.7),max:.7,r:rnd(2,4),c:BRIGHT,world:true});}
+      }
+    }
+    frontier=next;depth++;
+  }
+  G.best=Math.max(G.best,G.chain);
+}
+
+function step(dt){
+  const b=G.ball, BX=BALL_X();
+
+  /* The ball is stopped by a wall, not killed by it. It advances through the
+     world and the camera follows; running into the side of a block just holds
+     it there until you jump. Ending the run on a wall was a cheap death that
+     the real game does not have. */
+  let want=G.bx+SPEED*dt;
+  for(const blk of G.L.blocks){
+    if(b.y+BR<=blk.y+1) continue;            /* clear of the top, no wall here */
+    if(b.y-BR>=blk.y+blk.d) continue;        /* below the block entirely */
+    if(G.bx+BR<=blk.x && want+BR>blk.x) want=blk.x-BR;
+  }
+  G.bx=want; G.worldX=G.bx-BX;
+
+  if(In.tap>0){
+    In.tap--;
+    if(b.grounded){ b.vy=JUMP;b.jumps=1;b.grounded=false;S.jump(); }
+    else if(b.jumps<2){ b.vy=JUMP2;b.jumps=2;S.dbl(); ripple(G.bx,b.y); }
+  }
+
+  b.vy+=GRAV*dt;
+  const prevY=b.y; b.y+=b.vy*dt;
+  b.grounded=false;
+  b.trail.unshift(b.y); if(b.trail.length>50)b.trail.pop();
+
+  const wx=G.bx;
+  for(const blk of G.L.blocks){
+    if(wx+BR<blk.x || wx-BR>blk.x+blk.w) continue;
+    if(b.vy>=0 && prevY+BR<=blk.y+2 && b.y+BR>=blk.y){
+      b.y=blk.y-BR;b.vy=0;b.jumps=0;b.grounded=true;
+      if(prevY+BR<blk.y-1)S.land();
+    }
+  }
+
+  if(b.y-BR>VH+80){ G.die(); return; }
+
+  for(const s of G.L.stars){
+    if(s.got)continue;
+    if(Math.hypot(s.x-wx, s.y-b.y)<BR+16){
+      s.got=true;G.got++;G.score+=1;S.star(0);
+      G.pops.push({x:s.x,y:s.y,life:.85,n:1});
+      G.waves.push({x:s.x,y:s.y,r:4,max:60,a:.7,w:2,d:0,v:420});
+      for(let i=0;i<6;i++){const a=rnd(0,TAU),sp=rnd(40,150);
+        G.parts.push({x:s.x,y:s.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+          life:rnd(.3,.6),max:.6,r:rnd(2,4),c:BRIGHT,world:true});}
+    }
+  }
+
+  if(wx>G.L.finish+30) G.win();
+}
+
+function fx(dt){
+  for(let i=G.waves.length-1;i>=0;i--){const w=G.waves[i];
+    if(w.d>0){w.d-=dt;continue;}
+    w.r=Math.min(w.r+w.v*dt,w.max);
+    w.a-=(w.r>=w.max?2.6:1.5)*dt;
+    if(w.a<=0)G.waves.splice(i,1);}
+  for(let i=G.parts.length-1;i>=0;i--){const p=G.parts[i];
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    if(p.conf){p.vy+=260*dt;p.vx*=.99;} else {p.vy+=900*dt;}
+    p.life-=dt; if(p.life<=0)G.parts.splice(i,1);}
+  for(let i=G.pops.length-1;i>=0;i--){const p=G.pops[i];
+    p.y-=46*dt;
+    p.life-=dt; if(p.life<=0)G.pops.splice(i,1);}
+}
+
+/* ============================================================
+   DRAWING
+   ============================================================ */
+function roundRect(x,y,w,h,r){
+  x2.beginPath();
+  x2.moveTo(x+r,y);
+  x2.arcTo(x+w,y,x+w,y+h,r);
+  x2.arcTo(x+w,y+h,x,y+h,r);
+  x2.arcTo(x,y+h,x,y,r);
+  x2.arcTo(x,y,x+w,y,r);
+  x2.closePath();
+}
+function starPath(cx,cy,r){
+  x2.beginPath();
+  for(let i=0;i<10;i++){
+    const R=i%2?r*.45:r, a=-Math.PI/2+i*TAU/10;
+    const px=cx+Math.cos(a)*R, py=cy+Math.sin(a)*R;
+    i?x2.lineTo(px,py):x2.moveTo(px,py);
+  }
+  x2.closePath();
+}
+
+/* A block: body, then the scallops bitten out of its top edge in the
+   background colour, then the rail cap laid over the top. Drawing the
+   bites as real holes is only possible because this is Canvas 2D. */
+function drawBlock(b,sk){
+  const x=b.x-G.worldX, top=b.y, railBot=top+RH;
+  x2.fillStyle=sk.body;
+  x2.fillRect(x,railBot,b.w,Math.max(2,b.d-RH));
+
+  /* the bites are wide and shallow; centring them below the rail's underside
+     instead of just above it made the edge read as a row of hanging circles */
+  x2.fillStyle=BG;
+  const n=Math.max(1,Math.round(b.w/SPER)), per=b.w/n;
+  for(let i=0;i<=n;i++){
+    x2.beginPath();
+    x2.arc(x+i*per, railBot-1, SC, 0, TAU);
+    x2.fill();
+  }
+
+  x2.fillStyle=sk.rail;
+  roundRect(x-3,top,b.w+6,RH,RH/2);
+  x2.fill();
+}
+
+/* the level's name painted into the background, split by the ground line */
+function drawLabel(wx,groundY,id){
+  const x=wx-G.worldX;
+  if(x<-90||x>VW+90)return;
+  const cols=["#7fd4ff","#4ea8ff","#f4f9ff","#7fd4ff","#4ea8ff","#0d63cf"];
+  x2.textAlign="center";x2.textBaseline="middle";
+  x2.font="700 38px ui-sans-serif,system-ui,sans-serif";
+  const up="RUN".split(""), dn=id.split("");
+  for(let i=0;i<up.length;i++){
+    x2.fillStyle=cols[i];
+    x2.fillText(up[i],x,groundY-150+i*46);
+  }
+  for(let i=0;i<dn.length;i++){
+    x2.fillStyle=cols[3+i];
+    x2.fillText(dn[i],x,groundY+58+i*46);
+  }
+}
+
+function drawFinish(wx){
+  const x=wx-G.worldX;
+  if(x<-40||x>VW+40)return;
+  const W=26, S=13;
+  for(let yy=0;yy<VH;yy+=S)
+    for(let c=0;c<2;c++){
+      x2.fillStyle=((yy/S|0)+c)%2 ? "#ffffff" : "#111111";
+      x2.fillRect(x+c*S, yy, S, S);
+    }
+}
+
+function drawWorld(){
+  const sk=G.L.skin;
+  for(const b of G.L.blocks){
+    if(b.x-G.worldX>VW+40 || b.x+b.w-G.worldX<-40)continue;
+    drawBlock(b,sk);
+  }
+  drawFinish(G.L.finish);
+  drawLabel(300,G.L.blocks[0].y,G.L.id);
+  drawLabel(G.L.finish+150,G.L.blocks[G.L.blocks.length-1].y,G.L.id);
+
+  /* the pickup is the circle from the logo, not a star */
+  for(const st of G.L.stars){
+    if(st.got)continue;
+    const x=st.x-G.worldX;
+    if(x<-40||x>VW+40)continue;
+    x2.strokeStyle=BRIGHT;x2.lineWidth=3.2;
+    x2.beginPath();x2.arc(x,st.y,13,0,TAU);x2.stroke();
+    x2.fillStyle=BRIGHT;
+    x2.beginPath();x2.arc(x,st.y,4.4,0,TAU);x2.fill();
+  }
+
+  /* ripples, drawn in world space so they stay where they were made */
+  for(const w of G.waves){
+    if(w.d>0)continue;
+    const x=w.x-G.worldX;
+    if(x<-260||x>VW+260)continue;
+    x2.save();
+    x2.globalAlpha=clamp(w.a,0,1);
+    x2.strokeStyle=BRIGHT;x2.lineWidth=w.w;
+    x2.beginPath();x2.arc(x,w.y,w.r,0,TAU);x2.stroke();
+    x2.restore();
+  }
+
+  const b=G.ball;
+  if(b&&G.state!=="done"){
+    for(let i=b.trail.length-1;i>0;i-=5){
+      const k=1-i/b.trail.length;
+      x2.globalAlpha=k*.55;
+      x2.fillStyle=sk.rail;
+      x2.beginPath();x2.arc(BALL_X()-i*(SPEED/120),b.trail[i],BR*k*.9,0,TAU);x2.fill();
+    }
+    x2.globalAlpha=1;
+    x2.fillStyle=sk.rail;
+    x2.beginPath();x2.arc(BALL_X(),b.y,BR,0,TAU);x2.fill();
+  }
+
+  for(const p of G.parts){
+    x2.globalAlpha=clamp(p.life/p.max,0,1);
+    x2.fillStyle=p.c;
+    const px=p.world?p.x-G.worldX:p.x;
+    x2.beginPath();x2.arc(px,p.y,p.r,0,TAU);x2.fill();
+  }
+  x2.globalAlpha=1;
+
+  for(const p of G.pops){
+    x2.globalAlpha=clamp(p.life/.85,0,1);
+    x2.fillStyle=p.n>1?BRIGHT:"#f4f9ff";
+    x2.textAlign="center";x2.textBaseline="middle";
+    x2.font="700 "+(20+Math.min(p.n,6)*2)+"px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText("+"+p.n,p.x-G.worldX,p.y-26);
+  }
+  x2.globalAlpha=1;
+}
+
+/* The notched ribbon the app puts every heading on: a bar with a chevron
+   bitten out of each end and a dotted rule set inside it. */
+function ribbon(cy,h,label,col){
+  const x0=26,x1=VW-26,n=22;
+  x2.fillStyle=col||UI.ribbon;
+  x2.beginPath();
+  x2.moveTo(x0,cy-h/2); x2.lineTo(x1,cy-h/2); x2.lineTo(x1-n,cy);
+  x2.lineTo(x1,cy+h/2); x2.lineTo(x0,cy+h/2); x2.lineTo(x0+n,cy);
+  x2.closePath(); x2.fill();
+  x2.save();
+  x2.strokeStyle="rgba(255,255,255,.75)";x2.lineWidth=1.4;x2.setLineDash([3,4]);
+  x2.strokeRect(x0+9,cy-h/2+6,x1-x0-18,h-12);
+  x2.restore();
+  if(label){
+    x2.fillStyle="#ffffff";x2.textAlign="center";x2.textBaseline="middle";
+    x2.font="600 30px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText(label,VW/2,cy+1);
+  }
+}
+
+function tick(cx,cy,r,col){
+  x2.save();
+  x2.strokeStyle=col;x2.lineWidth=r*.42;x2.lineCap="round";x2.lineJoin="round";
+  x2.beginPath();
+  x2.moveTo(cx-r*.7,cy);x2.lineTo(cx-r*.15,cy+r*.6);x2.lineTo(cx+r*.75,cy-r*.7);
+  x2.stroke();x2.restore();
+}
+
+/* Placeholder mark: concentric circles standing in for the logo until the
+   guidelines pack lands. The circle is the point — the client's note was that
+   when it feels like too many round elements, it is going the right way. */
+function drawLogo(cy){
+  for(let i=0;i<4;i++){
+    x2.strokeStyle=i?"rgba(127,212,255,"+(0.5-i*0.11)+")":BRIGHT;
+    x2.lineWidth=i?1.6:4;
+    x2.beginPath();x2.arc(VW/2,cy-6,20+i*13,0,TAU);x2.stroke();
+  }
+  x2.textAlign="center";x2.textBaseline="middle";
+  x2.fillStyle="#f4f9ff";
+  x2.font="300 40px ui-sans-serif,system-ui,sans-serif";
+  x2.fillText("RIPPLE RUN",VW/2,cy+84);
+  x2.fillStyle="rgba(127,212,255,.62)";
+  x2.font="500 10px ui-sans-serif,system-ui,sans-serif";
+  x2.letterSpacing="4px";
+  x2.fillText("NOVO NORDISK",VW/2,cy+112);
+  x2.letterSpacing="0px";
+}
+
+/* the sawtooth band the level number sits on */
+function zigBand(cy,h,label){
+  const amp=13, per=26;
+  x2.fillStyle="#0d63cf";
+  x2.fillRect(-40,cy-h/2,VW+80,h);
+  /* the sawtooth edges, top and bottom */
+  for(const [y,dir] of [[cy-h/2,-1],[cy+h/2,1]]){
+    x2.beginPath();x2.moveTo(0,y);
+    for(let x=0,i=0;x<VW+per;x+=per,i++){
+      x2.lineTo(x+per/2,y+dir*amp);
+      x2.lineTo(x+per,y);
+    }
+    x2.lineTo(VW,y);x2.closePath();x2.fill();
+  }
+  x2.fillStyle="#ffffff";
+  x2.textAlign="center";x2.textBaseline="middle";
+  x2.font="600 30px ui-sans-serif,system-ui,sans-serif";
+  const tw=x2.measureText(label).width;
+  x2.fillText(label,VW/2-14,cy);
+  /* the tick */
+  x2.strokeStyle=BRIGHT;x2.lineWidth=6;x2.lineCap="round";x2.lineJoin="round";
+  const tx=VW/2+tw/2-4;
+  x2.beginPath();x2.moveTo(tx,cy+2);x2.lineTo(tx+8,cy+11);x2.lineTo(tx+24,cy-13);x2.stroke();
+}
+
+function starTotal(){
+  x2.textAlign="left";x2.textBaseline="middle";
+  x2.strokeStyle=BRIGHT;x2.lineWidth=3;
+  x2.beginPath();x2.arc(32,34+SAT,12,0,TAU);x2.stroke();
+  x2.fillStyle=BRIGHT;
+  x2.beginPath();x2.arc(32,34+SAT,4,0,TAU);x2.fill();
+  x2.fillStyle="#f4f9ff";
+  x2.font="600 26px ui-sans-serif,system-ui,sans-serif";
+  x2.fillText(String(Save.stars),54,35+SAT);
+}
+
+const PB=()=>({x:VW-38,y:38+SAT,r:21});
+function drawPause(){
+  const b=PB();
+  x2.fillStyle="rgba(255,255,255,.13)";
+  x2.beginPath();x2.arc(b.x,b.y,b.r,0,TAU);x2.fill();
+  x2.fillStyle="#ffffff";
+  x2.fillRect(b.x-6.5,b.y-8,4.5,16); x2.fillRect(b.x+2,b.y-8,4.5,16);
+}
+
+function draw(){
+  x2.setTransform(1,0,0,1,0,0);
+  x2.fillStyle=BG;x2.fillRect(0,0,cv.width,cv.height);
+  x2.setTransform(scale*dpr,0,0,scale*dpr,ox*dpr,oy*dpr);
+
+  if(G.state==="menu"){
+    starTotal();
+    ribbon(VH*.13+SAT,72,"RUN");
+    const done=Object.keys(Save.marks).length;
+    x2.textAlign="center";x2.textBaseline="middle";
+    x2.fillStyle="#ffffff";x2.font="300 32px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText(done+" / "+LEVELS.length,VW/2,VH*.13+SAT+66);
+
+    /* difficulty tabs */
+    const tw=112, ty=VH*.13+SAT+118;
+    TIERS.forEach((t,i)=>{
+      const tx=VW/2-tw*1.5-10+i*(tw+10);
+      roundRect(tx,ty-19,tw,38,7);
+      x2.fillStyle=G.tier===i?[UI.easy,UI.med,UI.hard][i]:"#3a3a3a";
+      x2.fill();
+      x2.fillStyle=G.tier===i?"#ffffff":"#8b8b8b";
+      x2.font="600 16px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText(t,tx+tw/2,ty+1);
+    });
+
+    /* the level grid for the selected tier */
+    const list=LEVELS.map((L,i)=>({L,i})).filter(o=>o.L.diff===G.tier);
+    const cols=3, cw=96, ch=96, gx=(VW-cols*cw-(cols-1)*16)/2, gy=ty+52;
+    list.forEach((o,k)=>{
+      const cx=gx+(k%cols)*(cw+16), cy=gy+Math.floor(k/cols)*(ch+16);
+      roundRect(cx,cy,cw,ch,10);
+      x2.fillStyle=UI.tile;x2.fill();
+      x2.fillStyle="#ffffff";x2.font="600 34px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText(String(o.i+1),cx+cw/2,cy+ch*.40);
+      const m=Save.marks[o.i]||0;
+      for(let j=0;j<m;j++) tick(cx+cw/2+(j-(m-1)/2)*22,cy+ch*.74,9,"#ffffff");
+    });
+    G.menuHit=list.map((o,k)=>({i:o.i,
+      x:gx+(k%cols)*(cw+16), y:gy+Math.floor(k/cols)*(ch+16), w:cw, h:ch}));
+    G.tabHit=TIERS.map((t,i)=>({i,x:VW/2-tw*1.5-10+i*(tw+10),y:ty-19,w:tw,h:38}));
+
+    x2.fillStyle="#8b8b8b";x2.font="500 14px ui-sans-serif,system-ui,sans-serif";
+    x2.fillStyle="rgba(127,212,255,.62)";
+    x2.fillText("TAP TO JUMP  ·  TAP AGAIN TO RIPPLE",VW/2,VH-64-SAB);
+    x2.fillStyle="rgba(255,255,255,.34)";
+    x2.font="500 12px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText("ONE TAP. A MUCH WIDER RESPONSE.",VW/2,VH-44-SAB);
+    return;
+  }
+
+  drawWorld();
+
+  if(G.state==="play"||G.state==="dead"){
+    x2.textAlign="left";x2.textBaseline="middle";
+    x2.fillStyle="#ffffff";
+    x2.font="300 46px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText(String(G.score),30,44+SAT);
+    x2.font="500 12px ui-sans-serif,system-ui,sans-serif";
+    x2.fillStyle="rgba(127,212,255,.55)";
+    x2.fillText("◎ "+G.got+"    ~ "+G.ripples+(G.ripples===1?" RIPPLE":" RIPPLES"),31,72+SAT);
+    if(G.chain>1){
+      x2.fillStyle=BRIGHT;x2.font="600 17px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("CHAIN ×"+G.chain,31,98+SAT);
+    }
+    if(!G.paused)drawPause();
+  }
+
+  if(G.state==="play"&&G.paused){
+    x2.fillStyle="rgba(0,16,63,.92)";x2.fillRect(-ox/scale,-oy/scale,VW+ox*2/scale,VH+oy*2/scale);
+    x2.textAlign="center";x2.textBaseline="middle";
+    x2.fillStyle="#ffffff";x2.font="600 34px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText("PAUSED",VW/2,VH*.42);
+    x2.fillStyle="#8b8b8b";x2.font="500 15px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText("TAP TO CARRY ON",VW/2,VH*.42+34);
+  }
+
+  if(G.state==="dead"&&G.st>.5){
+    x2.globalAlpha=clamp((G.st-.5)*2.4,0,1);
+    x2.fillStyle=BG;x2.fillRect(-ox/scale,-oy/scale,VW+ox*2/scale,VH+oy*2/scale);
+    drawLogo(VH*.17+SAT);
+    ribbon(VH*.35,64,"RUN");
+    x2.textAlign="center";x2.textBaseline="middle";
+    x2.fillStyle="#ffffff";x2.font="300 34px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText(G.L.id,VW/2,VH*.35+58);
+    x2.fillText("FAILED",VW/2,VH*.35+96);
+
+    /* star total on the left, retry in the middle — the app's layout */
+    const ry=VH*.62;
+    x2.strokeStyle=BRIGHT;x2.lineWidth=2.6;
+    for(const [dx,dy,r] of [[-26,-14,9],[0,-22,13],[26,-14,9]]){
+      x2.beginPath();x2.arc(VW*.24+dx,ry+dy,r,0,TAU);x2.stroke();
+    }
+    x2.fillStyle=UI.gold;x2.font="600 30px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText(String(Save.stars),VW*.24,ry+22);
+
+    x2.fillStyle=UI.grey;
+    x2.beginPath();x2.arc(VW/2,ry,46,0,TAU);x2.fill();
+    x2.save();
+    x2.strokeStyle="#ffffff";x2.lineWidth=8;x2.lineCap="round";
+    x2.beginPath();x2.arc(VW/2,ry,22,-0.5,TAU*0.72);x2.stroke();
+    x2.restore();
+    x2.fillStyle="#ffffff";
+    x2.beginPath();x2.moveTo(VW/2+12,ry-32);x2.lineTo(VW/2+34,ry-24);
+    x2.lineTo(VW/2+14,ry-8);x2.closePath();x2.fill();
+    G.retryHit={x:VW/2-46,y:ry-46,w:92,h:92};
+
+    x2.fillStyle="#8b8b8b";x2.font="500 14px ui-sans-serif,system-ui,sans-serif";
+    x2.fillText("TAP TO RETRY",VW/2,VH*.84);
+    x2.globalAlpha=1;
+  }
+
+  if(G.state==="done"){
+    x2.fillStyle=BG;x2.fillRect(-ox/scale,-oy/scale,VW+ox*2/scale,VH+oy*2/scale);
+    for(const p of G.parts){          /* confetti sits over the card */
+      x2.globalAlpha=clamp(p.life/p.max,0,1);
+      x2.fillStyle=p.c;
+      x2.beginPath();x2.arc(p.x,p.y,p.r,0,TAU);x2.fill();
+    }
+    x2.globalAlpha=1;
+    starTotal();
+    drawLogo(VH*.20);
+    zigBand(VH*.40,86,"Level "+(G.li+1));
+    if(G.st>.7){
+      x2.globalAlpha=clamp((G.st-.7)*2,0,1);
+      x2.textAlign="center";x2.textBaseline="middle";
+      x2.fillStyle="#8b8b8b";x2.font="500 15px ui-sans-serif,system-ui,sans-serif";
+      const m=Save.marks[G.li]||0;
+      for(let j=0;j<m;j++) tick(VW/2+(j-(m-1)/2)*34,VH*.55,13,UI.gold);
+
+      x2.fillStyle="rgba(127,212,255,.75)";
+      x2.font="500 13px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("WIDEST RIPPLE  "+G.best+"   ·   "+G.ripples+" SENT",VW/2,VH*.63);
+
+      /* the line, earned rather than asserted: the scoreboard has just
+         spent a level demonstrating it */
+      x2.fillStyle="rgba(244,249,255,.92)";
+      x2.font="300 19px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("Some things are worth the wait.",VW/2,VH*.71);
+      x2.fillStyle="#ffffff";
+      x2.font="500 19px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("Your health isn\u2019t.",VW/2,VH*.71+26);
+      x2.fillStyle="rgba(127,212,255,.5)";
+      x2.font="500 11px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("NOVONORDISK.COM",VW/2,VH*.71+56);
+
+      x2.fillStyle="#8b96ad";x2.font="500 14px ui-sans-serif,system-ui,sans-serif";
+      x2.fillText("TAP TO CONTINUE",VW/2,VH*.86);
+      x2.globalAlpha=1;
+    }
+  }
+}
+
+/* ---------- interruptions ---------- */
+const hold=()=>{ if(G.state==="play"&&!G.paused){G.paused=true;S.suspend();} };
+document.addEventListener("visibilitychange",()=>{document.hidden?hold():resize();});
+addEventListener("blur",hold);
+
+const inBox=(p,r)=>p&&r&&p.x>r.x&&p.x<r.x+r.w&&p.y>r.y&&p.y<r.y+r.h;
+
+function taps(){
+  if(In.tap<1)return;
+  if(G.state==="menu"){
+    const p=In.pos;
+    for(const t of (G.tabHit||[])) if(inBox(p,t)){ In.tap=0;G.tier=t.i;return; }
+    for(const c of (G.menuHit||[])) if(inBox(p,c)){ In.tap=0;G.start(c.i);return; }
+    In.tap=0;return;
+  }
+  if(G.state==="dead"&&G.st>.5){ In.tap=0;G.start(G.li);return; }
+  if(G.state==="done"&&G.st>.7){
+    In.tap=0;
+    /* back to the grid once the tier is finished, as the app does */
+    const next=G.li+1;
+    if(next<LEVELS.length&&LEVELS[next].diff===G.L.diff)G.start(next);
+    else {G.tier=G.L.diff;G.state="menu";}
+    return;
+  }
+  if(G.state==="play"){
+    if(G.paused){ In.tap=0;G.paused=false;S.resume();return; }
+    if(In.pos){
+      const b=PB();
+      if(Math.hypot(In.pos.x-b.x,In.pos.y-b.y)<b.r+10){ In.tap--;G.paused=true;S.suspend(); }
+    }
+  }
+}
+
+/* ---------- loop ---------- */
+let last=performance.now(),acc=0;const STEP=1/120;
+function frame(now){
+  const raw=Math.min(.05,(now-last)/1000);last=now;
+  G.t+=raw;G.st+=raw;
+  taps();
+  if(G.state==="play"&&!G.paused){
+    acc+=raw;let n=0;
+    while(acc>=STEP&&n<8){step(STEP);acc-=STEP;n++;if(G.state!=="play")break;}
+  } else acc=0;
+  fx(raw);
+  draw();
+  if(G.state!=="play"||G.paused)In.tap=0;
+  In.pos=null;
+  requestAnimationFrame(frame);
+}
+resize();G.load(+(QS.get("lvl")||0));
+if(QS.get("x")||QS.get("lvl"))G.start(+(QS.get("lvl")||0));
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
