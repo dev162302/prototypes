@@ -7,8 +7,22 @@
 <title>RUN</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100dvh;overflow:hidden;background:#010f3c;
-    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none}
+  html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#05070e;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;
+    display:grid;place-items:center}
+  #frame{display:flex;flex-direction:column;align-items:center;gap:16px}
+  /* On a phone the stage is the whole screen. On anything wider it becomes a
+     phone-shaped panel: the play column is a fixed 420 units, so letting it
+     stretch to a desktop width scaled the whole world up by ~2.3x and spilled
+     the terrain across the page. */
+  #stage{position:relative;width:100vw;height:100dvh;background:#010f3c;overflow:hidden}
+  #cap{display:none}
+  @media (min-width:680px) and (min-height:520px){
+    #stage{height:min(92dvh,900px);width:calc(min(92dvh,900px) * 0.472);
+      border-radius:28px;box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 1px rgba(127,212,255,.10)}
+    #cap{display:block;font:500 10px/1 ui-sans-serif,system-ui,sans-serif;
+      letter-spacing:.26em;color:#3f5f86;text-transform:uppercase}
+  }
   canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
   #ui{pointer-events:none}
   /* measured at runtime to keep the HUD out from under the notch and the
@@ -20,7 +34,10 @@
 </style>
 </head>
 <body>
-<canvas id="gl"></canvas><canvas id="ui"></canvas>
+<div id="frame">
+  <div id="stage"><canvas id="gl"></canvas><canvas id="ui"></canvas></div>
+  <p id="cap">Novo Nordisk · Gamescom 2026 · RUN</p>
+</div>
 <div id="sa"></div>
 <div id="fb">WEBGL2 REQUIRED</div>
 <script>
