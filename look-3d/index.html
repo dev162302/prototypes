@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#050c1e">
+<title>RIPPLE RUN — look test</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100dvh;overflow:hidden;background:#050c1e;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;
+    display:grid;place-items:center;font-family:ui-sans-serif,system-ui,sans-serif}
+  #frame{display:flex;flex-direction:column;align-items:center;gap:16px}
+  #stage{position:relative;width:100vw;height:100dvh;overflow:hidden;background:#050c1e}
+  #cap{display:none}
+  @media (min-width:680px) and (min-height:520px){
+    #stage{height:min(92dvh,900px);width:calc(min(92dvh,900px) * 0.472);
+      border-radius:28px;box-shadow:0 24px 70px rgba(0,0,0,.6),0 0 0 1px rgba(127,212,255,.10)}
+    #cap{display:block;font:500 10px/1 ui-sans-serif;letter-spacing:.26em;
+      color:#3f5f86;text-transform:uppercase}
+  }
+  canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+  #hud{position:absolute;inset:0;pointer-events:none;color:#eaf4ff;z-index:2}
+  #hud .t{position:absolute;top:26px;left:0;right:0;text-align:center;
+    font-size:34px;font-weight:300;letter-spacing:.01em;
+    text-shadow:0 2px 20px rgba(0,0,0,.5)}
+  #hud .s{position:absolute;top:66px;left:0;right:0;text-align:center;
+    font-size:11px;font-weight:500;letter-spacing:.22em;color:#7fd4ff;opacity:.75}
+  #hud .m{position:absolute;left:0;right:0;top:44%;text-align:center;
+    font-size:13px;font-weight:600;letter-spacing:.2em;color:#ff8a6b;
+    opacity:0;transition:opacity .25s}
+  #boot{position:absolute;inset:0;display:grid;place-items:center;
+    color:#3f5f86;font-size:11px;letter-spacing:.26em}
+</style>
+</head>
+<body>
+<div id="frame">
+  <div id="stage">
+    <div id="hud">
+      <div class="t" id="clock">0.00</div>
+      <div class="s" id="sub">TAP TO JUMP</div>
+      <div class="m" id="msg"></div>
+    </div>
+    <div id="boot">LOADING</div>
+  </div>
+  <p id="cap">Novo Nordisk · Gamescom 2026 · Ripple Run — look test</p>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+/* ============================================================
+   RIPPLE RUN — look test
+
+   Same game, same terrain grammar. What changes is that it is
+   actually rendered: extruded geometry, a key light casting real
+   shadows, materials that respond to it, depth fog and bloom.
+
+   Nothing here is a modelled asset — every shape is generated in
+   code. That matters, because the reference studios' look comes
+   from baked 3D art, and this is how far you can get without an
+   artist. It is a long way past flat shapes, and still short of
+   what a modelled-and-baked pipeline would give.
+   ============================================================ */
+import * as THREE from "three";
+import {EffectComposer} from "three/addons/postprocessing/EffectComposer.js";
+import {RenderPass}     from "three/addons/postprocessing/RenderPass.js";
+import {UnrealBloomPass}from "three/addons/postprocessing/UnrealBloomPass.js";
+import {RoundedBoxGeometry} from "three/addons/geometries/RoundedBoxGeometry.js";
+
+const stage=document.getElementById("stage");
+const clockEl=document.getElementById("clock");
+const subEl=document.getElementById("sub");
+const msgEl=document.getElementById("msg");
+
+/* ---------- palette ---------- */
+const C={deep:0x050c1e, blue:0x1553b8, rail:0x7fd4ff, wood:0xb5793f,
+         woodDark:0x8a5526, warn:0xff8a6b, pill:0x9fe0ff};
+
+/* ---------- world constants (same numbers as the 2D build) ---------- */
+const GRAV=26, JUMP=8.3, JUMP2=7.3, BR=0.55, SPEED=3.6;
+const LANE=0;
+
+/* ---------- terrain, in the same {gap,top,width,depth} grammar ---------- */
+const BLOCKS=[
+  {g:0,y:0,w:16,d:1.4},{g:3.4,y:0,w:6,d:1.4},{g:0,y:1.6,w:5,d:4.2},
+  {g:3.6,y:0,w:5.5,d:1.4},{g:0,y:1.6,w:4.5,d:4.6},{g:0,y:3.2,w:4.2,d:6.4},
+  {g:3.9,y:0.9,w:5.6,d:5.2},{g:0,y:-0.6,w:4.6,d:1.4},{g:3.7,y:0.9,w:6.4,d:4.8},
+  {g:0,y:0,w:16,d:1.4}
+];
+let X=-4; const blocks=[];
+for(const b of BLOCKS){ X+=b.g; blocks.push({x:X,y:b.y,w:b.w,d:b.d}); X+=b.w; }
+const FINISH=X-3;
+
+/* rotating plank bridges, and arrow volleys */
+const BRIDGES=[{x:19,y:2.4},{x:38,y:2.6}];
+const VOLLEYS=[12,27,45];
+
+/* ============================================================
+   SCENE
+   ============================================================ */
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.15;
+stage.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(C.deep);
+scene.fog=new THREE.Fog(0x061029, 30, 105);
+
+/* A narrow lens from slightly above and to the side. Pure side-on is what
+   makes the 2D build read flat — a few degrees of angle is most of the
+   difference between "shapes" and "objects". */
+const cam=new THREE.PerspectiveCamera(30, 1, 0.1, 300);
+const CAM_Z=40, CAM_LIFT=13, CAM_LEAD=3.2;
+cam.position.set(CAM_LEAD, 2+CAM_LIFT, CAM_Z);
+cam.lookAt(CAM_LEAD, 2, 0);
+
+/* key light, low and warm, throwing long shadows across the terrain */
+const key=new THREE.DirectionalLight(0xfff0dd, 3.1);
+key.position.set(-9, 14, 9);
+key.castShadow=true;
+key.shadow.mapSize.set(2048,2048);
+key.shadow.camera.near=1; key.shadow.camera.far=70;
+const S=22;
+Object.assign(key.shadow.camera,{left:-S,right:S,top:S,bottom:-S});
+key.shadow.bias=-0.0012;
+key.shadow.normalBias=0.02;
+scene.add(key);
+
+scene.add(new THREE.HemisphereLight(0x9ec9ff, 0x0a1430, 1.5));
+const rim=new THREE.DirectionalLight(0x7fd4ff, 2.2);
+rim.position.set(9,4,-8); scene.add(rim);
+const fill=new THREE.PointLight(0x2f7bd6, 60, 40, 2);
+fill.position.set(0,6,12); scene.add(fill);
+
+/* ---------- materials ---------- */
+const matBody=new THREE.MeshStandardMaterial({color:C.blue, roughness:.72, metalness:.03});
+const matRail=new THREE.MeshStandardMaterial({color:C.rail, roughness:.34, metalness:.05,
+  emissive:new THREE.Color(C.rail), emissiveIntensity:.22});
+const matBall=new THREE.MeshStandardMaterial({color:0xeaf7ff, roughness:.22, metalness:.1,
+  emissive:new THREE.Color(0x9fe0ff), emissiveIntensity:.35});
+const matWood=new THREE.MeshStandardMaterial({color:C.wood, roughness:.86, metalness:0});
+const matWoodDark=new THREE.MeshStandardMaterial({color:C.woodDark, roughness:.9});
+const matWarn=new THREE.MeshStandardMaterial({color:C.warn, roughness:.5,
+  emissive:new THREE.Color(C.warn), emissiveIntensity:.45});
+const matPill=new THREE.MeshStandardMaterial({color:C.pill, roughness:.25,
+  emissive:new THREE.Color(C.pill), emissiveIntensity:.7});
+
+/* A gradient backdrop and layers of distant terrain. Flat black behind the
+   play field is most of why the first pass still read as 'shapes on a screen'
+   — depth needs something to be deep against. */
+{
+  const c=document.createElement("canvas"); c.width=4; c.height=256;
+  const g=c.getContext("2d").createLinearGradient(0,0,0,256);
+  g.addColorStop(0,"#0a1a3e"); g.addColorStop(.45,"#071231"); g.addColorStop(1,"#03081a");
+  const ctx=c.getContext("2d"); ctx.fillStyle=g; ctx.fillRect(0,0,4,256);
+  const tex=new THREE.CanvasTexture(c);
+  const sky=new THREE.Mesh(new THREE.PlaneGeometry(400,220),
+    new THREE.MeshBasicMaterial({map:tex, depthWrite:false, fog:false}));
+  sky.position.set(0,20,-60); scene.add(sky);
+}
+
+const world=new THREE.Group(); scene.add(world);
+
+/* Distant skyline removed. It needs art-directing rather than another blind
+   numeric guess, and a clean graded backdrop reads better than a badly placed
+   one. Kept the group so layers can be reinstated deliberately. */
+const far=new THREE.Group(); scene.add(far);
+
+/* terrain: a body block plus a proud rail cap, both bevelled so the key
+   light catches an edge — that highlight is what sells them as solid */
+for(const b of blocks){
+  const body=new THREE.Mesh(new RoundedBoxGeometry(b.w,b.d,3.2,3,.07), matBody);
+  body.position.set(b.x+b.w/2, b.y-b.d/2, 0);
+  body.castShadow=true; body.receiveShadow=true; world.add(body);
+
+  const cap=new THREE.Mesh(new RoundedBoxGeometry(b.w+.16,.34,3.5,3,.12), matRail);
+  cap.position.set(b.x+b.w/2, b.y+.17, 0);
+  cap.castShadow=true; cap.receiveShadow=true; world.add(cap);
+}
+
+/* pills */
+const pills=[];
+for(const p of [[8,1.6],[17,2.2],[24,2.0],[33,2.6],[42,2.2],[50,1.8]]){
+  const g=new THREE.Group();
+  const a=new THREE.Mesh(new THREE.CapsuleGeometry(.22,.34,6,14), matPill);
+  a.castShadow=true; g.add(a);
+  g.position.set(p[0],p[1],0); g.rotation.z=-0.6;
+  world.add(g); pills.push({m:g,got:false});
+}
+
+/* rotating plank bridges — two counter-turning timbers you thread between */
+const bridges=[];
+for(const b of BRIDGES){
+  const grp=new THREE.Group(); grp.position.set(b.x,b.y,0);
+  for(const dir of [1,-1]){
+    const arm=new THREE.Group();
+    const plank=new THREE.Mesh(new RoundedBoxGeometry(5.4,.34,1.5,2,.06), matWood);
+    plank.castShadow=true; plank.receiveShadow=true; arm.add(plank);
+    for(const dx of [-1.9,-0.6,0.6,1.9]){
+      const slat=new THREE.Mesh(new THREE.BoxGeometry(.12,.4,1.62), matWoodDark);
+      slat.position.x=dx; slat.castShadow=true; arm.add(slat);
+    }
+    arm.position.y=dir*1.35; arm.userData.dir=dir; grp.add(arm);
+    bridges.push(arm);
+  }
+  const hub=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,1.8,18), matWoodDark);
+  hub.rotation.x=Math.PI/2; hub.castShadow=true; grp.add(hub);
+  world.add(grp);
+}
+
+/* arrows */
+const arrowGeom=new THREE.ConeGeometry(.17,.62,10);
+const shaftGeom=new THREE.CylinderGeometry(.05,.05,1.5,8);
+const arrows=[];
+function makeArrow(y){
+  const g=new THREE.Group();
+  const head=new THREE.Mesh(arrowGeom, matWarn);
+  head.rotation.z=-Math.PI/2; head.position.x=-0.95; head.castShadow=true; g.add(head);
+  const shaft=new THREE.Mesh(shaftGeom, matWoodDark);
+  shaft.rotation.z=Math.PI/2; shaft.castShadow=true; g.add(shaft);
+  for(const s of [-1,1]){
+    const f=new THREE.Mesh(new THREE.BoxGeometry(.5,.02,.34), matWarn);
+    f.position.set(.72,0,0); f.rotation.x=s*0.7; g.add(f);
+  }
+  g.position.set(0,y,0); world.add(g);
+  return {m:g, live:false, y};
+}
+for(const v of VOLLEYS) for(let i=0;i<3;i++) arrows.push(makeArrow(0));
+let volleyIdx=0;
+
+/* the ball */
+const ball=new THREE.Mesh(new THREE.SphereGeometry(BR,32,24), matBall);
+ball.castShadow=true; scene.add(ball);
+
+/* a soft blob shadow so the ball always reads as grounded */
+const blob=new THREE.Mesh(new THREE.CircleGeometry(BR*1.5,24),
+  new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.3}));
+blob.rotation.x=-Math.PI/2; scene.add(blob);
+
+/* ---------- post ---------- */
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,cam));
+const bloom=new UnrealBloomPass(new THREE.Vector2(1,1), 0.62, 0.7, 0.75);
+composer.addPass(bloom);
+
+function resize(){
+  const r=stage.getBoundingClientRect();
+  renderer.setSize(r.width,r.height,false);
+  composer.setSize(r.width,r.height);
+  bloom.resolution.set(r.width,r.height);
+  cam.aspect=r.width/r.height; cam.updateProjectionMatrix();
+}
+addEventListener("resize",resize);
+new ResizeObserver(resize).observe(stage);
+resize();
+
+/* ============================================================
+   PLAY
+   ============================================================ */
+const G={bx:0, vy:0, y:2, grounded:false, t:0, dead:false, done:false, msg:0};
+let taps=0;
+const tap=()=>{taps=Math.min(taps+1,3);};
+addEventListener("pointerdown",tap);
+addEventListener("keydown",e=>{if(e.code==="Space"||e.code==="ArrowUp"){e.preventDefault();tap();}});
+
+function surfaceAt(x){
+  let best=null;
+  for(const b of blocks) if(x>=b.x-BR && x<=b.x+b.w+BR) if(!best||b.y>best) best=b.y;
+  return best;
+}
+function reset(){
+  G.bx=0; G.vy=0; G.y=2; G.t=0; G.dead=false; G.done=false; G.grounded=false;
+  for(const p of pills){p.got=false; p.m.visible=true;}
+  for(const a of arrows){a.live=false; a.m.visible=false;}
+  volleyIdx=0;
+  msgEl.style.opacity=0;
+}
+reset();
+
+function step(dt){
+  if(G.dead||G.done){
+    if(taps>0){taps=0;reset();}
+    return;
+  }
+  G.t+=dt;
+
+  /* +y is up here, unlike the 2D build where +y was down, so a jump is a
+     positive velocity and gravity subtracts from it */
+  if(taps>0){ taps--; G.vy=G.grounded?JUMP:JUMP2; G.grounded=false; }
+
+  G.bx+=SPEED*dt;
+  G.vy-=GRAV*dt;
+  const prev=G.y;
+  G.y+=G.vy*dt;
+
+  const surf=surfaceAt(G.bx);
+  G.grounded=false;
+  if(surf!==null && G.vy<=0 && prev-BR>=surf-0.05 && G.y-BR<=surf){
+    G.y=surf+BR; G.vy=0; G.grounded=true;
+  }
+
+  if(G.y<-10){ G.dead=true; G.msg="MISSED"; }
+
+  /* pills */
+  for(const p of pills){
+    if(p.got)continue;
+    p.m.rotation.y+=dt*2.2;
+    if(Math.hypot(p.m.position.x-G.bx, p.m.position.y-G.y)<BR+.55){
+      p.got=true; p.m.visible=false;
+    }
+  }
+
+  /* bridges */
+  for(const arm of bridges) arm.rotation.z += dt*1.0*arm.userData.dir;
+  for(const b of BRIDGES){
+    if(Math.abs(b.x-G.bx)>4) continue;
+    for(const arm of bridges){
+      const wp=new THREE.Vector3(); arm.getWorldPosition(wp);
+      if(Math.abs(wp.x-b.x)>0.01) continue;
+      const ang=arm.rotation.z;
+      const ax=wp.x, ay=wp.y;
+      const ex=ax+Math.cos(ang)*2.7, ey=ay+Math.sin(ang)*2.7;
+      const sx=ax-Math.cos(ang)*2.7, sy=ay-Math.sin(ang)*2.7;
+      const dx=ex-sx, dy=ey-sy, L=dx*dx+dy*dy||1;
+      let t=((G.bx-sx)*dx+(G.y-sy)*dy)/L; t=Math.max(0,Math.min(1,t));
+      const d=Math.hypot(G.bx-(sx+dx*t), G.y-(sy+dy*t));
+      if(d<BR+.2){ G.dead=true; G.msg="HIT A PLANK"; }
+    }
+  }
+
+  /* arrow volleys, loosed as you approach */
+  if(volleyIdx<VOLLEYS.length && G.bx>VOLLEYS[volleyIdx]-14){
+    const base=volleyIdx*3;
+    for(let i=0;i<3;i++){
+      const a=arrows[base+i];
+      a.live=true; a.m.visible=true;
+      a.m.position.set(VOLLEYS[volleyIdx]+18+i*5, (surfaceAt(VOLLEYS[volleyIdx])||0)+1.1+i*0.9, 0);
+    }
+    volleyIdx++;
+  }
+  for(const a of arrows){
+    if(!a.live)continue;
+    a.m.position.x-=9.5*dt;
+    if(a.m.position.x<G.bx-20){a.live=false;a.m.visible=false;continue;}
+    if(Math.hypot(a.m.position.x-G.bx, a.m.position.y-G.y)<BR+.32){
+      G.dead=true; G.msg="SHOT DOWN";
+    }
+  }
+
+  if(G.bx>FINISH){ G.done=true; G.msg="FINISH"; }
+}
+
+let last=performance.now(), acc=0;
+const FIXED=1/120;
+function frame(now){
+  const raw=Math.min(.05,(now-last)/1000); last=now;
+  acc+=raw;
+  let n=0; while(acc>=FIXED && n<8){ step(FIXED); acc-=FIXED; n++; }
+
+  ball.position.set(G.bx, G.y, 0);
+  ball.rotation.z-=raw*6;
+  const s=surfaceAt(G.bx);
+  blob.visible = s!==null;
+  if(s!==null){ blob.position.set(G.bx, s+0.02, 0);
+    const h=Math.max(0,G.y-BR-s);
+    blob.material.opacity=Math.max(0,.34-h*.05);
+    blob.scale.setScalar(1+h*.05); }
+
+  /* camera trails the ball with easing, and drifts with its height */
+  const tx=G.bx+CAM_LEAD, ty=THREE.MathUtils.clamp(G.y,-2,7)*0.35+1.6;
+  cam.position.x += (tx-cam.position.x)*Math.min(1,raw*6);
+  cam.position.y += (ty+CAM_LIFT-cam.position.y)*Math.min(1,raw*3);
+  cam.lookAt(cam.position.x, cam.position.y-CAM_LIFT, 0);
+  far.position.x = cam.position.x*0.72;      /* parallax */
+  key.position.set(cam.position.x-9, 14, 9);
+  key.target.position.set(cam.position.x, 0, 0);
+  key.target.updateMatrixWorld();
+
+  clockEl.textContent=G.t.toFixed(2);
+  subEl.textContent = G.dead||G.done ? "TAP TO RESTART" : "TAP TO JUMP";
+  msgEl.textContent = G.msg||"";
+  msgEl.style.opacity = (G.dead||G.done) ? 1 : 0;
+
+  composer.render();
+  requestAnimationFrame(frame);
+}
+document.getElementById("boot").remove();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
