@@ -105,6 +105,7 @@ const LEVELS=[
     {g:160,y:480,w:200,d:200},{g:0,y:520,w:160,d:36},{g:145,y:460,w:250,d:200},
     {g:0,y:490,w:480,d:32}],
    boosts:[[520,330],[1005,330]],
+   spins:[[1685,365],[2560,385]],
    stars:[[700,330],[880,270],[1180,330],[1520,310],[1830,300],
           [2200,330],[2430,330],[2760,380],[3080,400],[3350,390]] },
 
@@ -115,6 +116,7 @@ const LEVELS=[
     {g:0,y:530,w:180,d:34},{g:150,y:470,w:220,d:190},{g:0,y:500,w:460,d:32}],
    walls:[[430,450,2,17],[1035,430,2,17],[1520,440,2,17]],
    boosts:[[1230,400],[1705,280]],
+   spins:[[740,255],[2250,435]],
    stars:[[620,300],[900,380],[1140,320],[1420,340],[1700,290],
           [2020,370],[2320,300],[2620,390],[2900,410]] },
 
@@ -126,6 +128,7 @@ const LEVELS=[
     {g:175,y:510,w:160,d:36},{g:0,y:440,w:150,d:200},{g:0,y:500,w:440,d:32}],
    walls:[[585,450,2,17],[1060,470,2,17],[1540,440,2,17]],
    boosts:[[2185,350],[2680,340]],
+   spins:[[755,295],[1240,435]],
    stars:[[600,380],[880,320],[1180,340],[1460,290],[1760,285],
           [2020,250],[2340,350],[2640,400],[2960,350]] },
 
@@ -136,6 +139,7 @@ const LEVELS=[
     {g:0,y:450,w:150,d:190},{g:175,y:500,w:200,d:36},{g:0,y:470,w:420,d:32}],
    walls:[[390,420,2,17],[880,410,2,17],[1355,420,2,17]],
    boosts:[[755,390],[1230,240]],
+   spins:[[1720,405],[2355,355]],
    stars:[[560,330],[820,300],[1120,300],[1420,240],[1700,300],
           [2000,380],[2280,260],[2600,330],[2900,370]] },
 
@@ -146,6 +150,7 @@ const LEVELS=[
     {g:0,y:420,w:140,d:210},{g:180,y:470,w:190,d:190},{g:0,y:500,w:420,d:32}],
    walls:[[370,440,2,17],[835,460,2,17],[1305,430,2,17]],
    boosts:[[1655,260],[2140,390]],
+   spins:[[525,285],[1000,425]],
    stars:[[560,350],[840,290],[1140,320],[1420,280],[1720,260],
           [2020,320],[2320,340],[2620,320],[2900,390]] },
 
@@ -157,6 +162,7 @@ const LEVELS=[
     {g:0,y:470,w:120,d:170},{g:195,y:510,w:170,d:36},{g:0,y:480,w:400,d:32}],
    walls:[[550,430,2,17],[1005,450,2,17],[1910,470,2,17]],
    boosts:[[2720,410]],
+   spins:[[690,265],[1350,425]],
    stars:[[520,340],[800,270],[1100,320],[1400,350],[1700,270],
           [2000,300],[2300,290],[2600,340],[2880,380]] },
 
@@ -167,6 +173,7 @@ const LEVELS=[
     {g:200,y:500,w:140,d:36},{g:0,y:430,w:130,d:200},{g:0,y:490,w:400,d:32}],
    walls:[[1095,490,2,17],[1675,450,2,17],[2325,500,2,17]],
    boosts:[[340,310],[785,310]],
+   spins:[[665,245],[1235,325]],
    stars:[[500,320],[780,250],[1080,290],[1380,298],[1660,260],
           [1960,290],[2260,310],[2560,300],[2840,370]] },
 
@@ -177,6 +184,7 @@ const LEVELS=[
     {g:210,y:460,w:130,d:170},{g:200,y:500,w:160,d:36},{g:0,y:480,w:400,d:32}],
    walls:[[1705,510,2,17],[2275,460,2,17]],
    boosts:[[2635,400]],
+   spins:[[960,345],[1827,335]],
    stars:[[480,330],[760,260],[1060,300],[1360,290],[1660,280],
           [1940,320],[2240,300],[2540,330],[2820,360]] }
 ];
@@ -213,12 +221,13 @@ function buildLevel(L){
   }
 
   const boosts=(L.boosts||[]).map(o=>({x:o[0],y:o[1],got:false}));
+  const spins=(L.spins||[]).map((o,i)=>({x:o[0],y:o[1],ph:i*0.7}));
 
   const rings=[];
   for(const st of L.stars)
     for(const o of [-1,0,1])
       rings.push({x:st[0]+o*44, y:st[1]+Math.abs(o)*9, got:false});
-  return {blocks:bs, bricks, boosts, finish:lastB.x+lastB.w-170, stars:rings,
+  return {blocks:bs, bricks, boosts, spins, finish:lastB.x+lastB.w-170, stars:rings,
           skin:SKINS[0], id:L.id, diff:L.diff};
 }
 
@@ -292,7 +301,8 @@ const G={
   t:0,st:0,
   li:0,L:null,
   worldX:0,bx:0,ball:null,parts:[],pops:[],waves:[],
-  got:0,score:0,chain:0,best:0,ripples:0,bricks:0,boosts:0,boost:0,rcd:0,stuck:0,paused:false,
+  got:0,score:0,chain:0,best:0,ripples:0,bricks:0,boosts:0,boost:0,rcd:0,stuck:0,
+  reason:"",paused:false,
 
   load(i){
     this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
@@ -300,7 +310,7 @@ const G={
     SPEED=SPEEDS[this.L.diff];
     this.worldX=0;this.bx=BALL_X();this.got=0;this.score=0;
     this.chain=0;this.best=0;this.ripples=0;this.bricks=0;
-    this.boosts=0;this.boost=0;this.rcd=0;this.stuck=0;
+    this.boosts=0;this.boost=0;this.rcd=0;this.stuck=0;this.reason="";
     this.parts=[];this.pops=[];this.waves=[];
     const b0=this.L.blocks[0];
     this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
@@ -315,7 +325,8 @@ const G={
       if(b){this.ball.y=b.y-BR;this.ball.vy=0;this.ball.grounded=true;}
     }
   },
-  die(){ if(this.state!=="play")return;
+  die(why){ if(this.state!=="play")return;
+    this.reason=why||"fell";
     this.state="dead";this.st=0;S.die();
     const c=this.L.skin.rail;
     for(let i=0;i<26;i++){const a=rnd(0,TAU),s=rnd(70,360);
@@ -359,6 +370,12 @@ const BW=28, BH=16;                 /* brick size in a wall */
    apex) and a late one (caught on the way up). */
 const BOOST_R=27, BOOST_T=3.0, BOOST_X=1.55, BOOST_UP=100;
 const RIP_CD=0.55;
+
+/* The rotating star from the reference. Here it is lethal, not a pickup, so it
+   only ever hangs over solid deck and high enough that a ball simply running
+   underneath is clear of it. It punishes a jump you did not need to make —
+   never one the terrain forced on you. */
+const SP_R=26, SP_SPD=2.2;
 /* Unlimited air jumps need a lid, for two reasons: the ball would otherwise
    climb out of view entirely, and a wall whose top is off-column could be
    flown over by going above it. */
@@ -464,6 +481,12 @@ function step(dt){
   /* the boost gate. Passing it does not just add speed: it widens the ripple
      too, so momentum makes the response travel further — which is the point
      the campaign is making, applied to the player's own movement. */
+  /* the rotating star ends the run on contact */
+  for(const sp of G.L.spins){
+    sp.ph+=SP_SPD*dt;
+    if(Math.hypot(sp.x-wx, sp.y-b.y)<SP_R+BR){ G.die("star"); return; }
+  }
+
   if(G.boost>0) G.boost-=dt;
   for(const bo of G.L.boosts){
     if(bo.got)continue;
@@ -612,6 +635,25 @@ function drawWorld(){
       x2.moveTo(x+dx-4,bo.y-9);x2.lineTo(x+dx+5,bo.y);x2.lineTo(x+dx-4,bo.y+9);
       x2.stroke();
     }
+  }
+
+  /* the rotating star — four chunky blades, in the brand family */
+  const BLADES=["#7fd4ff","#f4f9ff","#4ea8ff","#0d63cf"];
+  for(const sp of G.L.spins){
+    const x=sp.x-G.worldX;
+    if(x<-60||x>VW+60)continue;
+    for(let i=0;i<4;i++){
+      const a0=sp.ph+i*TAU/4;
+      x2.fillStyle=BLADES[i];
+      x2.beginPath(); x2.moveTo(x,sp.y);
+      for(let k=0;k<=10;k++){
+        const t=k/10, ang=a0+1.45*t, r=SP_R*(1-0.62*t*t);
+        x2.lineTo(x+Math.cos(ang)*r, sp.y+Math.sin(ang)*r);
+      }
+      x2.closePath(); x2.fill();
+    }
+    x2.fillStyle=BG;
+    x2.beginPath();x2.arc(x,sp.y,4.5,0,TAU);x2.fill();
   }
 
   /* the pickup is the circle from the logo, not a star */
@@ -873,7 +915,7 @@ function draw(){
     x2.textAlign="center";x2.textBaseline="middle";
     x2.fillStyle="#ffffff";x2.font="300 34px ui-sans-serif,system-ui,sans-serif";
     x2.fillText(G.L.id,VW/2,VH*.35+58);
-    x2.fillText("FAILED",VW/2,VH*.35+96);
+    x2.fillText(G.reason==="star"?"HIT A STAR":"FAILED",VW/2,VH*.35+96);
 
     /* star total on the left, retry in the middle — the app's layout */
     const ry=VH*.62;
