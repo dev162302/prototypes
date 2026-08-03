@@ -298,7 +298,7 @@ const G={
   li:0,L:null,
   worldX:0,bx:0,ball:null,parts:[],pops:[],
   got:0,jl:0,used:0,time:0,dry:0,pb:false,boosts:0,boost:0,spins:0,stuck:0,
-  bird:0,birdPace:0,reason:"",paused:false,
+  reason:"",paused:false,
 
   load(i){
     this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
@@ -307,8 +307,6 @@ const G={
     this.worldX=0;this.bx=BALL_X();this.got=0;
     this.jl=START_JUMPS;this.used=0;this.time=0;this.dry=0;this.pb=false;
     this.boosts=0;this.boost=0;this.spins=0;this.stuck=0;this.reason="";
-    this.bird=BALL_X()-BIRD_HEAD;
-    this.birdPace=SPEED*BIRD_X;
     this.parts=[];this.pops=[];
     const b0=this.L.blocks[0];
     this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
@@ -319,7 +317,6 @@ const G={
     const wx=+(QS.get("x")||0);
     if(wx>0){
       this.worldX=wx;this.bx=wx+BALL_X();
-      this.bird=this.bx-BIRD_HEAD;   /* the warp has to carry the bird too */
       const b=surfaceAt(this.worldX+BALL_X());
       if(b){this.ball.y=b.y-BR;this.ball.vy=0;this.ball.grounded=true;}
     }
@@ -373,18 +370,12 @@ const CEIL=34;
 const START_JUMPS=4;
 
 /* ---------- hazards ----------
-   The bird outruns the ball, so it closes the whole way — the boost gates are
-   what buy the distance back. */
+   Nothing chases you. The clock is the pressure: boost gates and the rotating
+   star are what a good run is made of. */
 /* The rotating star from the reference: four blades turning in place. In the
    original it is the colour switcher; there is no colour rule here, so it does
    the thing a time trial actually wants — it takes a second off the clock. */
 const SP_R=26, SP_SPD=2.2, SP_BONUS=1.0;
-/* The bird flies FASTER than the ball runs. That is the point: at a constant
-   run speed a level always takes the same time, so time would measure nothing.
-   The bird makes the boost gates the thing that decides your run — catch them
-   and you stay ahead, miss them and it closes. */
-const BIRD_X=1.12;               /* bird speed, as a multiple of the level's run speed */
-const BIRD_HEAD=430;             /* how far behind it starts */
 
 
 function step(dt){
@@ -456,10 +447,6 @@ function step(dt){
       G.parts.push({x:sp.x,y:sp.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,
         life:rnd(.3,.8),max:.8,r:rnd(2,4.5),c:BRIGHT,world:true});}
   }
-
-  /* the bird */
-  G.bird+=G.birdPace*dt;
-  if(G.bird+22>wx-BR){ G.die("bird"); return; }
 
   if(G.boost>0) G.boost-=dt;
   for(const bo of G.L.boosts){
@@ -624,23 +611,7 @@ function drawWorld(){
     x2.beginPath();x2.arc(x,sp.y,4.5,0,TAU);x2.fill();
   }
 
-  /* the bird */
-  {
-    const x=G.bird-G.worldX;
-    if(x>-70&&x<VW+70){
-      /* G.ball, not b: this block runs before `const b` is declared further
-         down, so touching b here throws the moment the bird comes on screen */
-      const y=(G.ball?G.ball.y:VH*.4)-40, f=Math.sin(G.t*9)*10;
-      x2.fillStyle="#ff8a6b";
-      x2.beginPath();
-      x2.moveTo(x+24,y);
-      x2.lineTo(x-10,y-14-f); x2.lineTo(x-2,y);
-      x2.lineTo(x-10,y+14+f);
-      x2.closePath(); x2.fill();
-      x2.fillStyle="#00103f";
-      x2.beginPath();x2.arc(x+13,y-3,2.4,0,TAU);x2.fill();
-    }
-  }
+
 
   /* the pickup is a pill: one more jump */
   for(const st of G.L.stars){
@@ -978,7 +949,7 @@ function draw(){
     x2.textAlign="center";x2.textBaseline="middle";
     x2.fillStyle="#ffffff";x2.font="300 34px ui-sans-serif,system-ui,sans-serif";
     x2.fillText(G.L.id,VW/2,VH*.35+58);
-    x2.fillText({bird:"CAUGHT",fell:"MISSED"}[G.reason]||"FAILED",VW/2,VH*.35+96);
+    x2.fillText(G.reason==="fell"?"MISSED":"FAILED",VW/2,VH*.35+96);
 
     /* star total on the left, retry in the middle — the app's layout */
     const ry=VH*.62;
