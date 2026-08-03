@@ -40,12 +40,12 @@
 /* ============================================================
    RIPPLE RUN · TIME TRIAL — Novo Nordisk, Gamescom 2026
 
-   A speedrun variant of the branded build. The ripple here is purely
-   cosmetic: it fires on every jump and wakes nothing. What is scarce
-   instead is the jump itself — you start with four and every jump
-   spends one, which makes a pill worth more than any score could be.
-   Ranked on time first and jumps second, so the fastest line that
-   spends the fewest jumps wins.
+   A speedrun variant of the branded build, with the ripple taken out
+   altogether — not as a mechanic and not as an effect. A jump is just
+   a jump. What is scarce is the jump itself: you start with four and
+   every jump spends one, which makes a pill worth more than any score
+   could be. Ranked on time first and jumps second, so the fastest line
+   that spends the fewest jumps wins.
 
    The brick walls are gone. They were passable only by rippling
    through them, so with the ripple demoted to decoration they would
@@ -277,8 +277,8 @@ const G={
   tier:0,
   t:0,st:0,
   li:0,L:null,
-  worldX:0,bx:0,ball:null,parts:[],pops:[],waves:[],
-  got:0,jl:0,used:0,time:0,dry:0,pb:false,ripples:0,boosts:0,boost:0,stuck:0,paused:false,
+  worldX:0,bx:0,ball:null,parts:[],pops:[],
+  got:0,jl:0,used:0,time:0,dry:0,pb:false,boosts:0,boost:0,stuck:0,paused:false,
 
   load(i){
     this.li=((i%LEVELS.length)+LEVELS.length)%LEVELS.length;
@@ -286,8 +286,8 @@ const G={
     SPEED=SPEEDS[this.L.diff];
     this.worldX=0;this.bx=BALL_X();this.got=0;
     this.jl=START_JUMPS;this.used=0;this.time=0;this.dry=0;this.pb=false;
-    this.ripples=0;this.boosts=0;this.boost=0;this.stuck=0;
-    this.parts=[];this.pops=[];this.waves=[];
+    this.boosts=0;this.boost=0;this.stuck=0;
+    this.parts=[];this.pops=[];
     const b0=this.L.blocks[0];
     this.ball={y:b0.y-BR,vy:0,jumps:0,grounded:true,trail:[]};
   },
@@ -335,12 +335,6 @@ function surfaceAt(wx){
   return null;
 }
 
-/* ============================================================
-   THE RIPPLE — cosmetic
-   It fires on every jump and wakes nothing. The brand device stays
-   on screen; it simply no longer moves the world.
-   ============================================================ */
-const RIP_R=170;                    /* the ripple is decoration now */
 /* The gate hangs in the jump arc, not at head height: a running ball misses
    it by design, so the boost has to be jumped for. 100 above the deck puts the
    catch band at 62..138, which covers both an early jump (caught at the 132
@@ -351,12 +345,6 @@ const BOOST_R=27, BOOST_T=3.0, BOOST_X=1.55, BOOST_UP=100;
    flown over by going above it. */
 const CEIL=34;
 const START_JUMPS=4;
-
-function ripple(ox,oy){
-  G.ripples++;
-  for(let i=0;i<3;i++)
-    G.waves.push({x:ox,y:oy,r:6,max:RIP_R+i*16,a:.85-i*.2,w:3.6-i*.9,d:i*.05,v:600});
-}
 
 function step(dt){
   const b=G.ball, BX=BALL_X();
@@ -390,7 +378,6 @@ function step(dt){
       G.jl--; G.used++;
       if(b.grounded){ b.vy=JUMP;b.grounded=false;S.jump(); }
       else { b.vy=JUMP2;S.dbl(); }
-      ripple(G.bx,b.y);
     }else{ S.land(); G.dry=0.9; }
   }
   if(G.dry>0) G.dry-=dt;
@@ -421,8 +408,7 @@ function step(dt){
     if(Math.hypot(bo.x-wx, bo.y-b.y)>BOOST_R+BR)continue;
     bo.got=true;G.boost=BOOST_T;G.boosts++;
     S.dbl();
-    for(let i=0;i<3;i++)
-      G.waves.push({x:bo.x,y:bo.y,r:8,max:150+i*30,a:.95-i*.2,w:3.4-i*.8,d:i*.05,v:700});
+
     for(let i=0;i<14;i++){const a=rnd(-0.6,0.6),sp=rnd(140,420);
       G.parts.push({x:bo.x,y:bo.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
         life:rnd(.3,.7),max:.7,r:rnd(2,4.5),c:BRIGHT,world:true});}
@@ -433,8 +419,7 @@ function step(dt){
     if(Math.hypot(s.x-wx, s.y-b.y)<BR+18){
       s.got=true;G.got++;G.jl++;S.star(Math.min(G.got,7));
       G.pops.push({x:s.x,y:s.y,life:.9});
-      G.waves.push({x:s.x,y:s.y,r:4,max:70,a:.75,w:2,d:0,v:420});
-      for(let i=0;i<6;i++){const a=rnd(0,TAU),sp=rnd(40,150);
+      for(let i=0;i<12;i++){const a=rnd(0,TAU),sp=rnd(50,210);
         G.parts.push({x:s.x,y:s.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
           life:rnd(.3,.6),max:.6,r:rnd(2,4),c:BRIGHT,world:true});}
     }
@@ -444,11 +429,7 @@ function step(dt){
 }
 
 function fx(dt){
-  for(let i=G.waves.length-1;i>=0;i--){const w=G.waves[i];
-    if(w.d>0){w.d-=dt;continue;}
-    w.r=Math.min(w.r+w.v*dt,w.max);
-    w.a-=(w.r>=w.max?2.6:1.5)*dt;
-    if(w.a<=0)G.waves.splice(i,1);}
+
   for(let i=G.parts.length-1;i>=0;i--){const p=G.parts[i];
     p.x+=p.vx*dt;p.y+=p.vy*dt;
     if(p.conf){p.vy+=260*dt;p.vx*=.99;} else {p.vy+=900*dt;}
@@ -574,16 +555,6 @@ function drawWorld(){
   }
 
   /* ripples, drawn in world space so they stay where they were made */
-  for(const w of G.waves){
-    if(w.d>0)continue;
-    const x=w.x-G.worldX;
-    if(x<-260||x>VW+260)continue;
-    x2.save();
-    x2.globalAlpha=clamp(w.a,0,1);
-    x2.strokeStyle=BRIGHT;x2.lineWidth=w.w;
-    x2.beginPath();x2.arc(x,w.y,w.r,0,TAU);x2.stroke();
-    x2.restore();
-  }
 
   const b=G.ball;
   if(b&&G.state!=="done"){
