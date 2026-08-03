@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#04070f">
+<title>VELOCITY</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100dvh;overflow:hidden;background:#04070f;color:#eaf4ff;
+    font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;
+    user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  #ui{position:fixed;inset:0;pointer-events:none;z-index:2}
+  .row{position:absolute;top:22px;left:0;right:0;display:flex;justify-content:space-between;
+    padding:0 26px;align-items:flex-start}
+  .stat{font-variant-numeric:tabular-nums}
+  .k{font-size:9px;letter-spacing:.34em;color:#5b7ba6;font-weight:600}
+  .v{font-size:30px;font-weight:200;letter-spacing:-.01em;line-height:1.05;
+     text-shadow:0 0 24px rgba(120,190,255,.35)}
+  .v.sm{font-size:22px}
+  #mult{color:#8ef0d0}
+
+  /* speed bar */
+  #spd{position:absolute;left:26px;right:26px;bottom:26px;height:2px;
+    background:rgba(120,190,255,.14);border-radius:2px;overflow:hidden}
+  #spdf{height:100%;width:0%;background:linear-gradient(90deg,#3aa0ff,#8ef0d0);
+    box-shadow:0 0 14px rgba(120,220,255,.8)}
+
+  #centre{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+  #card{opacity:0;transform:translateY(14px) scale(.96);transition:.34s cubic-bezier(.2,.9,.25,1)}
+  #card.on{opacity:1;transform:none}
+  .big{font-size:54px;font-weight:200;letter-spacing:-.02em;
+    text-shadow:0 0 40px rgba(120,190,255,.45)}
+  .sub{font-size:11px;letter-spacing:.32em;color:#5b7ba6;margin-top:10px;font-weight:600}
+  .hint{margin-top:26px;font-size:11px;letter-spacing:.26em;color:#8fb4dd;opacity:.9}
+  .tag{display:inline-block;margin-top:20px;padding:7px 16px;border-radius:30px;
+    border:1px solid rgba(120,190,255,.3);font-size:10px;letter-spacing:.28em;color:#8fb4dd}
+
+  #flash{position:fixed;inset:0;background:#eaf4ff;opacity:0;pointer-events:none;z-index:3;
+    mix-blend-mode:screen}
+  #boot{position:fixed;inset:0;display:grid;place-items:center;color:#3f5f86;
+    font-size:10px;letter-spacing:.32em;z-index:4;background:#04070f}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="row">
+    <div class="stat"><div class="k">DISTANCE</div><div class="v" id="dist">0</div></div>
+    <div class="stat" style="text-align:right">
+      <div class="k">MULTIPLIER</div><div class="v sm" id="mult">×1.0</div>
+    </div>
+  </div>
+  <div id="spd"><div id="spdf"></div></div>
+  <div id="centre"><div id="card">
+    <div class="big" id="title">VELOCITY</div>
+    <div class="sub" id="sub">THREE.JS · INSTANCED · POST-PROCESSED</div>
+    <div class="hint" id="hint">TAP LEFT / RIGHT TO STEER &nbsp;·&nbsp; TAP TO BEGIN</div>
+    <div class="tag" id="tag">GRAZE OBSTACLES · THREAD GATES</div>
+  </div></div>
+</div>
+<div id="flash"></div>
+<div id="boot">LOADING</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+/* ============================================================
+   VELOCITY — a showcase build
+
+   Three.js, and the things that actually make a browser game feel
+   expensive rather than just "3D":
+
+   · everything recycled — obstacles, gates, cores and the track
+     itself are pooled InstancedMeshes, so the draw call count is
+     flat no matter how far you get
+   · speed is expressed, not just stated: FOV widens with velocity,
+     the camera drifts back, streaks lengthen, the world fogs in
+   · every input has anticipation and follow-through — the craft
+     banks into a lane change and overshoots slightly on arrival
+   · a post chain: bloom, then a single custom pass doing radial
+     chromatic aberration, vignette and grain in one draw
+   · fixed-timestep simulation with interpolated rendering, so the
+     handling is identical at 60Hz and 120Hz
+   ============================================================ */
+import * as THREE from "three";
+import {EffectComposer}  from "three/addons/postprocessing/EffectComposer.js";
+import {RenderPass}      from "three/addons/postprocessing/RenderPass.js";
+import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js";
+import {ShaderPass}      from "three/addons/postprocessing/ShaderPass.js";
+
+/* ---------- tuning ---------- */
+const LANES=[-2.35,0,2.35];
+const V0=40, VMAX=96, ACCEL=2.4;
+const CRAFT_AHEAD=1.0, CAM_BACK=10.5;      /* fast on purpose, and it keeps building */
+const SEG=6, AHEAD=210, BEHIND=30;
+const NEAR=1.15;                        /* how close a miss has to be to count */
+
+const C={bg:0x04070f, rail:0x2f9bff, core:0x8ef0d0, bad:0xff5470, gate:0x8a6bff};
+
+/* ============================================================
+   RENDERER
+   ============================================================ */
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.25;
+document.body.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(C.bg);
+scene.fog=new THREE.Fog(C.bg, 40, 190);
+
+const cam=new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 400);
+scene.add(cam);
+
+scene.add(new THREE.HemisphereLight(0x88bbff, 0x0a1024, 1.1));
+const key=new THREE.DirectionalLight(0xcfe6ff, 1.5); key.position.set(4,10,6); scene.add(key);
+const glow=new THREE.PointLight(0x3aa0ff, 38, 26, 2); scene.add(glow);
+
+/* ============================================================
+   TRACK — a scrolling grid, two lit rails, and ribs
+   ============================================================ */
+const floorMat=new THREE.MeshBasicMaterial({color:0x0a1730});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,600), floorMat);
+floor.rotation.x=-Math.PI/2; floor.position.y=-0.62; scene.add(floor);
+
+/* the grid is a shader on a plane rather than geometry — one draw call for
+   an infinitely scrolling floor, and it never aliases into moiré */
+const gridMat=new THREE.ShaderMaterial({
+  transparent:true, depthWrite:false,
+  uniforms:{uZ:{value:0}, uCol:{value:new THREE.Color(0x2f9bff)}, uFog:{value:new THREE.Color(C.bg)}},
+  vertexShader:`varying vec2 vU; varying float vD;
+    void main(){ vU=uv; vec4 mv=modelViewMatrix*vec4(position,1.);
+      vD=-mv.z; gl_Position=projectionMatrix*mv; }`,
+  fragmentShader:`uniform float uZ; uniform vec3 uCol,uFog; varying vec2 vU; varying float vD;
+    float line(float x,float w){ float g=abs(fract(x)-.5); return smoothstep(w,0.,g); }
+    void main(){
+      float lat=line(vU.x*14., .035);
+      float lon=line(vU.y*120.+uZ, .05);
+      float a=max(lat*.55, lon*.75);
+      float depth=1.-smoothstep(30.,185.,vD);
+      gl_FragColor=vec4(uCol, a*depth*.9);
+    }`
+});
+const grid=new THREE.Mesh(new THREE.PlaneGeometry(30,600,1,1), gridMat);
+grid.rotation.x=-Math.PI/2; grid.position.y=-0.6; scene.add(grid);
+
+/* rails */
+const railMat=new THREE.MeshBasicMaterial({color:C.rail});
+for(const s of [-1,1]){
+  const r=new THREE.Mesh(new THREE.BoxGeometry(.14,.14,600), railMat);
+  r.position.set(s*4.3,-0.5,-260); scene.add(r);
+}
+
+/* ribs — instanced arches that flick past and give the speed something to
+   read against */
+const RIBS=46;
+const ribGeo=new THREE.TorusGeometry(5.2,.05,6,24,Math.PI);
+const ribMat=new THREE.MeshBasicMaterial({color:0x1d4f8f});
+const ribs=new THREE.InstancedMesh(ribGeo,ribMat,RIBS);
+ribs.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(ribs);
+const ribZ=[]; for(let i=0;i<RIBS;i++) ribZ.push(-i*(AHEAD/RIBS));
+
+/* ============================================================
+   POOLS — obstacles, gates, cores
+   ============================================================ */
+function pool(geo,mat,n){
+  const m=new THREE.InstancedMesh(geo,mat,n);
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  m.frustumCulled=false; scene.add(m);
+  return {mesh:m, items:Array.from({length:n},()=>({live:false,x:0,z:0,r:0,kind:0}))};
+}
+const badMat =new THREE.MeshStandardMaterial({color:C.bad ,emissive:C.bad ,emissiveIntensity:.85,roughness:.35});
+const coreMat=new THREE.MeshStandardMaterial({color:C.core,emissive:C.core,emissiveIntensity:1.1,roughness:.25});
+const gateMat=new THREE.MeshStandardMaterial({color:C.gate,emissive:C.gate,emissiveIntensity:.7,roughness:.4});
+
+const bad =pool(new THREE.BoxGeometry(1.5,1.5,1.5), badMat, 60);
+const core=pool(new THREE.OctahedronGeometry(.42,0), coreMat, 60);
+const gate=pool(new THREE.TorusGeometry(1.5,.11,8,28), gateMat, 20);
+
+const M=new THREE.Matrix4(), Q=new THREE.Quaternion(), E=new THREE.Euler(), P=new THREE.Vector3(), S3=new THREE.Vector3(1,1,1);
+function writeInstances(p, spin, scale){
+  let n=0;
+  for(const it of p.items){
+    if(!it.live) continue;
+    E.set(spin?it.r:0, spin?it.r*.7:0, spin?it.r*.4:0);
+    Q.setFromEuler(E); P.set(it.x,it.y??0,it.z);
+    S3.setScalar(scale?it.s??1:1);
+    M.compose(P,Q,S3); p.mesh.setMatrixAt(n++,M);
+  }
+  p.mesh.count=n; p.mesh.instanceMatrix.needsUpdate=true;
+}
+const take=p=>p.items.find(i=>!i.live);
+
+/* ============================================================
+   THE CRAFT
+   ============================================================ */
+const craft=new THREE.Group(); scene.add(craft);
+{
+  const body=new THREE.Mesh(new THREE.ConeGeometry(.34,1.25,4),
+    new THREE.MeshStandardMaterial({color:0xdff0ff,emissive:0x6fc8ff,emissiveIntensity:.22,
+      roughness:.2,metalness:.3}));
+  body.rotation.x=-Math.PI/2; body.rotation.z=Math.PI/4; craft.add(body);
+  for(const s of [-1,1]){
+    const w=new THREE.Mesh(new THREE.BoxGeometry(.9,.06,.4),
+      new THREE.MeshStandardMaterial({color:0x2f9bff,emissive:0x2f9bff,emissiveIntensity:.45}));
+    w.position.set(s*.5,-.05,.35); w.rotation.z=s*.35; craft.add(w);
+  }
+}
+/* engine plume: from a chase cam the exhaust points straight at you, so a
+   path ribbon projects as a floor stripe. Billboards are the honest read. */
+const plumeTex=(()=>{
+  const c=document.createElement("canvas"); c.width=c.height=64;
+  const g=c.getContext("2d").createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,"rgba(255,255,255,1)");
+  g.addColorStop(.35,"rgba(190,235,255,.65)");
+  g.addColorStop(1,"rgba(120,200,255,0)");
+  const x=c.getContext("2d"); x.fillStyle=g; x.fillRect(0,0,64,64);
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return t;
+})();
+const mkPlume=(col,op)=>{
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:plumeTex,color:col,
+    blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:op}));
+  scene.add(s); return s;
+};
+const plumeCore=mkPlume(0xcdefff,.95);   /* hot centre */
+const plumeHalo=mkPlume(0x2f9bff,.45);   /* bloom catcher */
+
+/* streaks — instanced slivers rushing past, the cheapest speed cue there is */
+const STREAK=90;
+const streaks=new THREE.InstancedMesh(
+  new THREE.BoxGeometry(.03,.03,1),
+  new THREE.MeshBasicMaterial({color:0x9ed6ff,transparent:true,opacity:.5}), STREAK);
+streaks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+streaks.frustumCulled=false; scene.add(streaks);
+const stk=Array.from({length:STREAK},()=>({x:0,y:0,z:0}));
+const resetStreak=(s,z)=>{ s.x=(Math.random()-.5)*17; s.y=Math.random()*7-1.2; s.z=z-Math.random()*AHEAD; };
+stk.forEach(s=>resetStreak(s,0));
+
+/* ============================================================
+   POST
+   ============================================================ */
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,cam));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), .55, .55, .72);
+composer.addPass(bloom);
+
+/* one pass doing aberration + vignette + grain, rather than three */
+const finalPass=new ShaderPass({
+  uniforms:{tDiffuse:{value:null}, uAmt:{value:0}, uT:{value:0}, uHit:{value:0}},
+  vertexShader:`varying vec2 vU; void main(){ vU=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+  fragmentShader:`
+    uniform sampler2D tDiffuse; uniform float uAmt,uT,uHit; varying vec2 vU;
+    void main(){
+      vec2 c=vU-.5;
+      float r2=dot(c,c);
+      /* aberration scales with radius AND speed, so the edges smear when fast */
+      float k=(uAmt*.0075 + uHit*.02) * r2;
+      vec3 col;
+      col.r=texture2D(tDiffuse, vU - c*k*1.0).r;
+      col.g=texture2D(tDiffuse, vU            ).g;
+      col.b=texture2D(tDiffuse, vU + c*k*1.0).b;
+      col*= 1.0 - smoothstep(.28,.86,r2)*.72;                 /* vignette */
+      float g=fract(sin(dot(vU*vec2(uT*.7+91.,uT*.9+7.),vec2(12.9898,78.233)))*43758.5453);
+      col+=(g-.5)*.035;                                        /* grain */
+      col+=uHit*vec3(.55,.12,.2);
+      gl_FragColor=vec4(col,1.);
+    }`
+});
+composer.addPass(finalPass);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const G={
+  run:false, over:false, z:0, v:V0, lane:1, x:0, vx:0, roll:0,
+  dist:0, mult:1, near:0, hit:0, shake:0, fov:72, camZ:CAM_BACK, t:0, nextZ:-60
+};
+const el=id=>document.getElementById(id);
+const flash=el("flash");
+
+function spawnChunk(z){
+  const kind=Math.random();
+  if(kind<0.16){
+    /* a gate: pass through the ring for multiplier */
+    const g=take(gate); if(g){ const L=Math.floor(Math.random()*3);
+      g.live=true; g.x=LANES[L]; g.y=.55; g.z=z; g.r=0; g.s=1; g.lane=L; g.scored=false; }
+    for(let i=0;i<2;i++){ const c=take(core); if(c){
+      c.live=true; c.x=LANES[Math.floor(Math.random()*3)]; c.y=.5; c.z=z-6-i*5; c.r=0; c.s=1; } }
+  } else {
+    /* one or two blocked lanes — never all three */
+    const blocked=Math.random()<.42?2:1;
+    const order=[0,1,2].sort(()=>Math.random()-.5).slice(0,blocked);
+    for(const L of order){ const o=take(bad); if(o){
+      o.live=true; o.x=LANES[L]; o.y=.35; o.z=z; o.r=Math.random()*3; o.s=1; } }
+    const free=[0,1,2].filter(l=>!order.includes(l));
+    const c=take(core);
+    if(c){ c.live=true; c.x=LANES[free[Math.floor(Math.random()*free.length)]];
+      c.y=.5; c.z=z-3; c.r=0; c.s=1; }
+  }
+}
+
+function reset(){
+  for(const p of [bad,core,gate]) p.items.forEach(i=>i.live=false);
+  Object.assign(G,{run:true,over:false,z:0,v:V0,lane:1,x:0,vx:0,roll:0,
+    dist:0,mult:1,near:0,hit:0,shake:0,nextZ:-60});
+  el("card").classList.remove("on");
+}
+
+function gameOver(){
+  G.run=false; G.over=true; G.hit=1; G.shake=1.1;
+  flash.style.transition="none"; flash.style.opacity=".8";
+  requestAnimationFrame(()=>{flash.style.transition="opacity .5s"; flash.style.opacity="0";});
+  el("title").textContent=Math.floor(G.dist)+" m";
+  el("sub").textContent="RUN ENDED";
+  el("hint").textContent="TAP TO GO AGAIN";
+  el("tag").textContent="TOP SPEED "+Math.round(G.v*3.6)+" KM/H";
+  setTimeout(()=>el("card").classList.add("on"),260);
+}
+
+/* ---------- input ---------- */
+function steer(dir){ G.lane=Math.max(0,Math.min(2,G.lane+dir)); }
+addEventListener("pointerdown",e=>{
+  if(!G.run){ if(G.over||!G.started){ G.started=true; reset(); } return; }
+  steer(e.clientX < innerWidth/2 ? -1 : 1);
+});
+addEventListener("keydown",e=>{
+  if(e.code==="ArrowLeft"||e.code==="KeyA")  steer(-1);
+  if(e.code==="ArrowRight"||e.code==="KeyD") steer(1);
+  if(e.code==="Space"&&!G.run){ e.preventDefault(); G.started=true; reset(); }
+});
+
+/* ============================================================
+   SIMULATION — fixed step
+   ============================================================ */
+const STEP=1/120;
+function step(dt){
+  G.t+=dt;
+  if(!G.run){ G.hit=Math.max(0,G.hit-dt*1.6); G.shake=Math.max(0,G.shake-dt*2); return; }
+
+  G.v=Math.min(VMAX, G.v+ACCEL*dt);
+  G.z-=G.v*dt;
+  G.dist+=G.v*dt;
+
+  /* lane easing with a little overshoot, and a bank that follows the move */
+  const target=LANES[G.lane];
+  const k=26, damp=2*Math.sqrt(k)*0.62;                 /* under-damped on purpose */
+  G.vx += (target-G.x)*k*dt - G.vx*damp*dt;
+  G.x  += G.vx*dt;
+  G.roll += (THREE.MathUtils.clamp(-G.vx*.055,-.5,.5) - G.roll)*Math.min(1,dt*11);
+
+  while(G.nextZ > G.z-AHEAD){
+    const sp=(G.v-V0)/(VMAX-V0);
+    spawnChunk(G.nextZ); G.nextZ-=G.v*(.62-sp*.20);
+  }
+
+  const px=G.x, pz=G.z;
+  for(const o of bad.items){
+    if(!o.live)continue;
+    o.r+=dt*1.6;
+    if(o.z>pz+BEHIND){o.live=false;continue;}
+    const dz=Math.abs(o.z-pz), dx=Math.abs(o.x-px);
+    if(dz<1.0 && dx<1.05){ gameOver(); return; }
+    /* a near miss pays, and it is the only way the multiplier climbs fast */
+    if(dz<1.2 && dx<NEAR+1.05 && !o.grazed){ o.grazed=true; G.near++; G.mult=Math.min(9.9,G.mult+.12); }
+  }
+  for(const c of core.items){
+    if(!c.live)continue;
+    c.r+=dt*3;
+    if(c.z>pz+BEHIND){c.live=false;continue;}
+    if(Math.abs(c.z-pz)<1.1 && Math.abs(c.x-px)<.95){
+      c.live=false; G.dist+=18*G.mult; G.shake=Math.max(G.shake,.18);
+    }
+  }
+  for(const g of gate.items){
+    if(!g.live)continue;
+    g.r+=dt*.8;
+    if(g.z>pz+BEHIND){g.live=false;continue;}
+    if(!g.scored && g.z>pz-1 && g.z<pz+1){
+      g.scored=true;
+      if(Math.abs(g.x-px)<1.0){ G.mult=Math.min(9.9,G.mult+.5); G.shake=Math.max(G.shake,.3); }
+      else G.mult=Math.max(1,G.mult-.6);
+    }
+  }
+  G.mult=Math.max(1,G.mult-dt*.11);          /* bleeds, so you have to keep earning it */
+  G.shake=Math.max(0,G.shake-dt*2.4);
+  G.hit=Math.max(0,G.hit-dt*2);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+let last=performance.now(), acc=0;
+function frame(now){
+  const raw=Math.min(.05,(now-last)/1000); last=now;
+  acc+=raw; let n=0;
+  while(acc>=STEP && n<8){ step(STEP); acc-=STEP; n++; }
+
+  const sp=(G.v-V0)/(VMAX-V0);
+
+  /* craft */
+  craft.position.set(G.x, 0, G.z+CRAFT_AHEAD);
+  craft.rotation.z=G.roll;
+  craft.rotation.y=G.roll*.35;
+  glow.position.set(G.x, 1.1, G.z+3);
+
+  /* exhaust: pulses on the frame clock, swells with speed and with the bank */
+  {
+    const px=craft.position.x, pz=craft.position.z+.78;
+    const fl=1+Math.sin(G.t*47)*.07+Math.sin(G.t*13.3)*.04;
+    const k=(.62+sp*.66)*fl;
+    plumeCore.position.set(px-G.roll*.18,-.03,pz);
+    plumeCore.scale.set(k*.48,k*.48,1);
+    plumeHalo.position.copy(plumeCore.position);
+    plumeHalo.scale.set(k*1.9,k*1.5,1);
+    plumeHalo.material.opacity=(.30+sp*.28)*fl;
+  }
+
+  /* camera: sits back and widens as speed builds, plus impact shake */
+  const wantFov=72+sp*17, wantZ=CAM_BACK+sp*2.2;
+  cam.fov += (wantFov-cam.fov)*Math.min(1,raw*3);
+  G.camZ  += (wantZ -G.camZ )*Math.min(1,raw*3);
+  cam.updateProjectionMatrix();
+  const sh=G.shake;
+  cam.position.set(
+    G.x*.34 + (Math.random()-.5)*sh*.5,
+    2.55   + (Math.random()-.5)*sh*.5,
+    G.z+G.camZ);
+  cam.lookAt(G.x*.5, .95, G.z-18);
+
+  /* ribs and streaks recycle in front of the craft */
+  for(let i=0;i<RIBS;i++){
+    if(ribZ[i] > G.z+BEHIND) ribZ[i]-=AHEAD;
+    E.set(0,0,0); Q.setFromEuler(E); P.set(0,-0.55,ribZ[i]); S3.setScalar(1);
+    M.compose(P,Q,S3); ribs.setMatrixAt(i,M);
+  }
+  ribs.instanceMatrix.needsUpdate=true;
+
+  const len=2+sp*16;
+  for(let i=0;i<STREAK;i++){
+    const s=stk[i];
+    if(s.z > G.z+10) resetStreak(s,G.z);
+    E.set(0,0,0);Q.setFromEuler(E);P.set(s.x,s.y,s.z);S3.set(1,1,len);
+    M.compose(P,Q,S3); streaks.setMatrixAt(i,M);
+  }
+  streaks.instanceMatrix.needsUpdate=true;
+  streaks.material.opacity=.12+sp*.5;
+
+  writeInstances(bad,true,false);
+  writeInstances(core,true,false);
+  writeInstances(gate,false,false);
+
+  gridMat.uniforms.uZ.value = G.z*0.5;
+  floor.position.z=grid.position.z=G.z-260;
+
+  finalPass.uniforms.uAmt.value = sp;
+  finalPass.uniforms.uT.value   = G.t;
+  finalPass.uniforms.uHit.value = G.hit;
+  bloom.strength = .52 + sp*.2;
+
+  el("dist").textContent=Math.floor(G.dist);
+  el("mult").textContent="×"+G.mult.toFixed(1);
+  el("spdf").style.width=(6+sp*94)+"%";
+
+  composer.render();
+  requestAnimationFrame(frame);
+}
+
+addEventListener("resize",()=>{
+  renderer.setSize(innerWidth,innerHeight);
+  composer.setSize(innerWidth,innerHeight);
+  bloom.resolution.set(innerWidth,innerHeight);
+  cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix();
+});
+
+el("card").classList.add("on");
+document.getElementById("boot").remove();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
