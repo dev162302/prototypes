@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#00103f">
+<title>RIPPLE RUN</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100dvh;overflow:hidden;background:#00103f;color:#f4f9ff;
+    font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+    -webkit-tap-highlight-color:transparent;touch-action:none;overscroll-behavior:none;
+    user-select:none}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  #ui{position:fixed;inset:0;pointer-events:none;z-index:2}
+  .row{position:absolute;top:calc(20px + env(safe-area-inset-top));left:0;right:0;
+    display:flex;justify-content:space-between;padding:0 26px;align-items:flex-start}
+  .stat{font-variant-numeric:tabular-nums}
+  .k{font-size:9px;letter-spacing:.34em;color:#5f92cf;font-weight:600}
+  .v{font-size:30px;font-weight:200;letter-spacing:-.01em;line-height:1.05;
+     text-shadow:0 0 26px rgba(127,212,255,.4)}
+  .v.sm{font-size:22px}
+  #score{color:#7fd4ff}
+
+  /* chain readout — only visible while a cascade is running */
+  #chain{position:absolute;left:0;right:0;top:34%;text-align:center;opacity:0;
+    transition:opacity .16s;font-size:13px;letter-spacing:.3em;color:#7fd4ff;font-weight:600}
+  #chain.on{opacity:1}
+
+  #spd{position:absolute;left:26px;right:26px;bottom:calc(26px + env(safe-area-inset-bottom));
+    height:2px;background:rgba(127,212,255,.14);border-radius:2px;overflow:hidden}
+  #spdf{height:100%;width:0%;background:linear-gradient(90deg,#0d63cf,#7fd4ff);
+    box-shadow:0 0 14px rgba(127,212,255,.85)}
+
+  #centre{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:0 24px}
+  #card{opacity:0;transform:translateY(14px) scale(.96);transition:.34s cubic-bezier(.2,.9,.25,1)}
+  #card.on{opacity:1;transform:none}
+  .big{font-size:clamp(38px,13vw,58px);font-weight:200;letter-spacing:-.02em;
+    text-shadow:0 0 44px rgba(127,212,255,.5)}
+  .sub{font-size:11px;letter-spacing:.32em;color:#5f92cf;margin-top:10px;font-weight:600}
+  .hint{margin-top:26px;font-size:11px;letter-spacing:.26em;color:#9ec8f2;opacity:.9}
+  .tag{display:inline-block;margin-top:20px;padding:7px 16px;border-radius:30px;
+    border:1px solid rgba(127,212,255,.3);font-size:10px;letter-spacing:.28em;color:#9ec8f2}
+
+  #flash{position:fixed;inset:0;background:#f4f9ff;opacity:0;pointer-events:none;z-index:3;
+    mix-blend-mode:screen}
+  #boot{position:fixed;inset:0;display:grid;place-items:center;color:#3f6ea6;
+    font-size:10px;letter-spacing:.32em;z-index:4;background:#00103f}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="row">
+    <div class="stat"><div class="k">DISTANCE</div><div class="v" id="dist">0</div></div>
+    <div class="stat" style="text-align:right">
+      <div class="k">SCORE</div><div class="v sm" id="score">0</div>
+    </div>
+  </div>
+  <div id="chain"></div>
+  <div id="spd"><div id="spdf"></div></div>
+  <div id="centre"><div id="card">
+    <div class="big" id="title">RIPPLE RUN</div>
+    <div class="sub" id="sub">ONE TAP · ONE RIPPLE</div>
+    <div class="hint" id="hint">TAP TO JUMP &nbsp;·&nbsp; TAP AGAIN IN THE AIR</div>
+    <div class="tag" id="tag">EVERY LANDING SPREADS</div>
+  </div></div>
+</div>
+<div id="flash"></div>
+<div id="boot">LOADING</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+/* ============================================================
+   RIPPLE RUN — WebGL build
+
+   The same game as the 2D original: a ball runs, you tap, it jumps,
+   and every landing sends a ripple out across the world. What the
+   ripple touches wakes up and ripples in turn, and each step
+   outward is worth more than the last — so a tap that spreads beats
+   several that don't. The campaign line as a scoring rule.
+
+   What the stack buys over the canvas build:
+   · the ripple is real geometry and a real shader, not drawn circles
+     — it travels across the floor plane in world space, and you
+     watch it recede in perspective
+   · the path is a chain of discs, which is the logo shape repeated
+     until it becomes the level itself
+   · everything is instanced: pads, orbs, stars, gates, ripple rings
+     and the backdrop are six draw calls between them
+   · bloom, then one custom pass doing vignette, radial chromatic
+     aberration and grain together
+   · fixed-timestep physics, so the jump arc is identical at 60Hz
+     and 120Hz — the thing that most often breaks a runner on
+     unfamiliar hardware
+   ============================================================ */
+import * as THREE from "three";
+import {EffectComposer}   from "three/addons/postprocessing/EffectComposer.js";
+import {RenderPass}       from "three/addons/postprocessing/RenderPass.js";
+import {UnrealBloomPass}  from "three/addons/postprocessing/UnrealBloomPass.js";
+import {ShaderPass}       from "three/addons/postprocessing/ShaderPass.js";
+import {mergeGeometries}  from "three/addons/utils/BufferGeometryUtils.js";
+
+/* ---------- brand ---------- */
+const C={
+  deep : 0x00103f,     /* the brand deep — background and fog */
+  mid  : 0x0a4ea8,
+  rib  : 0x0d63cf,
+  brite: 0x7fd4ff,     /* the light blue everything glows in */
+  white: 0xf4f9ff,
+  warn : 0xff5470      /* the one non-brand colour, reserved for lethal */
+};
+
+/* ---------- tuning ----------
+   air time of a single jump is 2*JUMP/GRAV = 0.59s, apex 2.0 units.
+   every gap in the generator is sized as a fraction of v*airtime, so
+   the terrain scales itself with the speed instead of guessing.     */
+const BR=.55;                             /* ball radius */
+const GRAV=46, JUMP=13.2, JUMP2=11.4;
+const AIRT=2*JUMP/GRAV;
+const V0=15, VMAX=27, ACCEL=.62;
+const PAD_R=1.55, PAD_STEP=2.15;          /* disc radius, and spacing along the run */
+const RIP_SPD=15.5, RIP_LIFE=2.6;         /* how fast a ripple travels, how long it lives */
+const RIP_MAX=9;                          /* chain depth cap, as in the original */
+const CHAIN_R0=7.2, CHAIN_R=5.4;          /* what a tap wakes, then what each wake wakes */
+const STAR_R=1.15, STAR_SPIN=2.4;
+const GATE_R=1.0, GATE_UP=2.2, BOOST_T=2.4, BOOST_X=1.45;
+const DIE_Y=-7;
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const RI=(a,b)=>Math.floor(rnd(a,b+1));
+
+/* ============================================================
+   RENDERER
+   ============================================================ */
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.12;
+document.body.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(C.deep);
+scene.fog=new THREE.Fog(C.deep,46,168);
+
+const cam=new THREE.PerspectiveCamera(52,innerWidth/innerHeight,.1,400);
+scene.add(new THREE.AmbientLight(0x6ea8e8,.85));
+const key=new THREE.DirectionalLight(0xdff0ff,1.25); key.position.set(-8,16,12); scene.add(key);
+const rim=new THREE.DirectionalLight(C.brite,.9);    rim.position.set(9,4,-14);  scene.add(rim);
+const ballLight=new THREE.PointLight(C.brite,26,16,2); scene.add(ballLight);
+
+/* ============================================================
+   THE FLOOR — where the ripple actually lives
+
+   A single plane far below the path. Ripples are pushed in as
+   uniforms and expand in world space, so from this camera you watch
+   them travel away from you and flatten out with distance, which is
+   the whole reason to do this in 3D rather than draw circles.
+   ============================================================ */
+const RIPU=[]; for(let i=0;i<8;i++) RIPU.push(new THREE.Vector4(0,0,-99,0));
+const floorMat=new THREE.ShaderMaterial({
+  fog:true,
+  uniforms:{
+    uRip:{value:RIPU}, uT:{value:0}, uX:{value:0},
+    uA:{value:new THREE.Color(C.rib)}, uB:{value:new THREE.Color(C.brite)},
+    fogColor:{value:new THREE.Color(C.deep)}, fogNear:{value:46}, fogFar:{value:168}
+  },
+  vertexShader:`
+    varying vec3 vW;
+    void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz;
+      gl_Position=projectionMatrix*viewMatrix*w; }`,
+  fragmentShader:`
+    uniform vec4 uRip[8]; uniform float uT,uX; uniform vec3 uA,uB;
+    uniform vec3 fogColor; uniform float fogNear,fogFar;
+    varying vec3 vW;
+    void main(){
+      vec2 p=vW.xz;
+      /* the grid is anchored in world space, so it streams past you */
+      vec2 q=p/7.0, w=fwidth(q);
+      vec2 g=abs(fract(q)-.5)/w;
+      float line=1.-min(min(g.x,g.y),1.);
+      vec3 col=uA*line*.30;
+
+      /* concentric rings, one per live ripple, each a travelling gaussian */
+      float e=0.;
+      for(int i=0;i<8;i++){
+        vec4 r=uRip[i];
+        float age=uT-r.z;
+        if(age<0.||age>${RIP_LIFE.toFixed(2)}) continue;
+        float d=distance(p,r.xy);
+        float rad=age*${RIP_SPD.toFixed(2)};
+        float ring=exp(-pow((d-rad)*.85,2.));
+        float trail=exp(-pow((d-rad*.62)*.30,2.))*.30;
+        e+=(ring+trail)*exp(-age*1.15)*(.46+r.w*.045);
+      }
+      col+=uB*min(e,1.35)*.80;
+
+      float fade=1.-smoothstep(52.,120.,abs(p.x-uX));
+      col*=fade;
+
+      float fd=smoothstep(fogNear,fogFar,-(viewMatrix*vec4(vW,1.)).z);
+      gl_FragColor=vec4(mix(col,fogColor,fd),1.);
+    }`
+});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(260,260,1,1),floorMat);
+floor.rotation.x=-Math.PI/2; floor.position.y=-8.2; scene.add(floor);
+
+/* ============================================================
+   BACKDROP — the logo circle, repeated into a horizon
+   ============================================================ */
+const BGN=16;
+const bgRings=new THREE.InstancedMesh(
+  new THREE.TorusGeometry(1,.028,6,44),
+  new THREE.MeshBasicMaterial({color:C.rib,transparent:true,opacity:.30,fog:true}), BGN);
+bgRings.frustumCulled=false; scene.add(bgRings);
+const bgData=[];
+for(let i=0;i<BGN;i++) bgData.push({
+  x:i*30-40, y:rnd(-3,14), z:-rnd(16,72), s:rnd(6,20), r:rnd(0,6.28), sp:rnd(-.16,.16)});
+
+/* ============================================================
+   POOLS
+   ============================================================ */
+const M=new THREE.Matrix4(), Q=new THREE.Quaternion(), E=new THREE.Euler(),
+      P=new THREE.Vector3(), S=new THREE.Vector3(), COL=new THREE.Color();
+
+function pool(geo,mat,n){
+  const mesh=new THREE.InstancedMesh(geo,mat,n);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.frustumCulled=false; scene.add(mesh);
+  return {mesh,items:Array.from({length:n},()=>({live:false}))};
+}
+const take=p=>p.items.find(i=>!i.live);
+
+/* the path: one disc per step, which is the brand mark used as level geometry */
+const pads=pool(new THREE.CylinderGeometry(PAD_R,PAD_R*.72,.52,26),
+  new THREE.MeshStandardMaterial({color:C.mid,roughness:.55,metalness:.15,
+    emissive:C.rib,emissiveIntensity:.16}), 190);
+/* a bright cap ring on each disc — the rail of the 2D build, kept */
+const caps=pool(new THREE.TorusGeometry(PAD_R*.98,.055,6,30),
+  new THREE.MeshBasicMaterial({color:C.brite,transparent:true,opacity:.85}), 190);
+
+const orbs=pool(new THREE.IcosahedronGeometry(.30,1),
+  new THREE.MeshStandardMaterial({color:C.white,emissive:C.brite,emissiveIntensity:.9,
+    roughness:.25}), 70);
+
+const gates=pool(new THREE.TorusGeometry(GATE_R,.075,8,30),
+  new THREE.MeshStandardMaterial({color:C.brite,emissive:C.brite,emissiveIntensity:.8,
+    roughness:.3}), 8);
+
+/* the rotating star, merged into one geometry so the whole hazard is
+   a single instance rather than five meshes */
+const starGeo=(()=>{
+  const parts=[new THREE.TorusGeometry(.30,.10,8,20)];
+  for(let i=0;i<4;i++){
+    const b=new THREE.BoxGeometry(1.45,.15,.15);
+    b.translate(.92,0,0); b.rotateZ(i*Math.PI/2); parts.push(b);
+  }
+  return mergeGeometries(parts,false);
+})();
+const stars=pool(starGeo,
+  new THREE.MeshStandardMaterial({color:C.warn,emissive:C.warn,emissiveIntensity:.55,
+    roughness:.35,metalness:.2}), 10);
+
+/* ripple rings that live at the height of the landing, not on the floor */
+const RINGN=14;
+const rings=new THREE.InstancedMesh(new THREE.TorusGeometry(1,.045,6,46),
+  new THREE.MeshBasicMaterial({color:C.brite,transparent:true,opacity:.9,
+    blending:THREE.AdditiveBlending,depthWrite:false,fog:false}), RINGN);
+rings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+rings.frustumCulled=false; scene.add(rings);
+const ringItems=Array.from({length:RINGN},()=>({live:false,x:0,y:0,t0:0,life:1,d:0}));
+
+/* ============================================================
+   THE BALL
+   ============================================================ */
+const ball=new THREE.Mesh(new THREE.IcosahedronGeometry(BR,3),
+  new THREE.MeshStandardMaterial({color:C.white,emissive:C.brite,emissiveIntensity:.55,
+    roughness:.22,metalness:.05}));
+scene.add(ball);
+const halo=(()=>{
+  const c=document.createElement("canvas"); c.width=c.height=64;
+  const x=c.getContext("2d"), g=x.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,"rgba(255,255,255,.95)");
+  g.addColorStop(.4,"rgba(127,212,255,.45)");
+  g.addColorStop(1,"rgba(127,212,255,0)");
+  x.fillStyle=g; x.fillRect(0,0,64,64);
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,color:C.brite,
+    blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,opacity:.6}));
+  s.scale.set(3.2,3.2,1); scene.add(s); return s;
+})();
+
+/* ============================================================
+   POST
+   ============================================================ */
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,cam));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.62,.72,.72);
+composer.addPass(bloom);
+const post=new ShaderPass({
+  uniforms:{tDiffuse:{value:null},uAmt:{value:0},uT:{value:0},uHit:{value:0},uPulse:{value:0}},
+  vertexShader:`varying vec2 vUv; void main(){vUv=uv;
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`
+    uniform sampler2D tDiffuse; uniform float uAmt,uT,uHit,uPulse; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
+    void main(){
+      vec2 c=vUv-.5;
+      float k=(0.0012+uAmt*0.0030+uHit*0.011)*(1.+uPulse*.45);
+      vec3 col;
+      col.r=texture2D(tDiffuse,vUv+c*k).r;
+      col.g=texture2D(tDiffuse,vUv).g;
+      col.b=texture2D(tDiffuse,vUv-c*k).b;
+      col*=1.-smoothstep(.34,.92,length(c))*.60;                 /* vignette */
+      col+=vec3(.06,.14,.28)*uPulse*.20;                         /* ripple bloom-out */
+      col+=(hash(vUv*vec2(1024.)+uT)-.5)*.030;                   /* grain */
+      col+=uHit*vec3(.50,.10,.18);
+      gl_FragColor=vec4(col,1.);
+    }`
+});
+composer.addPass(post);
+
+/* ============================================================
+   SOUND — a few oscillators, no assets
+   ============================================================ */
+const Snd={ctx:null,on:true,
+  init(){ if(!this.ctx){ try{ this.ctx=new (AudioContext||webkitAudioContext)(); }catch(e){} } },
+  blip(f,d,type,g0){
+    if(!this.on||!this.ctx) return;
+    const t=this.ctx.currentTime, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type||"sine"; o.frequency.setValueAtTime(f,t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(40,f*.55),t+d);
+    g.gain.setValueAtTime(g0||.06,t); g.gain.exponentialRampToValueAtTime(.0008,t+d);
+    o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t+d+.02);
+  },
+  jump(){ this.blip(520,.13,"triangle",.05); },
+  dbl(){  this.blip(720,.12,"triangle",.045); },
+  land(d){ this.blip(190+d*40,.34,"sine",.075); },
+  orb(d){ this.blip(660+d*90,.10,"square",.030); },
+  boost(){ this.blip(340,.30,"sawtooth",.05); },
+  dead(){ this.blip(150,.55,"sawtooth",.09); }
+};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const G={
+  run:false, over:false, started:false,
+  x:0, y:BR, vy:0, v:V0, grounded:true, jumps:0,
+  dist:0, score:0, best:0, t:0,
+  boost:0, hit:0, shake:0, pulse:0, chain:0, chainT:0,
+  runs:[],                 /* {x0,x1,y} solid intervals */
+  nextX:0, camX:0, camY:3.4, fov:52
+};
+const el=id=>document.getElementById(id);
+const flash=el("flash");
+const ripples=[];          /* live rings, for the floor shader */
+const pending=[];          /* cascade steps waiting their turn to show */
+
+/* ============================================================
+   GENERATOR
+
+   Gaps are always a fraction of v*AIRT, so the terrain stays exactly
+   as hard as the speed makes it. A rising step eats air time, so the
+   allowance is cut when the next run is higher.
+   ============================================================ */
+function lay(x0,len,y){
+  const n=Math.max(2,Math.round(len/PAD_STEP));
+  for(let i=0;i<n;i++){
+    const p=take(pads), c=take(caps);
+    if(!p||!c) break;
+    p.live=c.live=true;
+    p.x=c.x=x0+i*PAD_STEP; p.y=c.y=y; p.z=c.z=0;
+    p.s=1-Math.abs(i-(n-1)/2)/n*.14;    /* discs taper a little toward the ends */
+    c.s=p.s;
+  }
+  const x1=x0+(n-1)*PAD_STEP;
+  G.runs.push({x0:x0-PAD_R*.7,x1:x1+PAD_R*.7,y});
+  return x1+PAD_R*.7;
+}
+
+function spawnRun(){
+  const prev=G.runs[G.runs.length-1];
+  const reach=G.v*AIRT;                 /* how far one jump carries at this speed */
+  const py=prev?prev.y:0;
+
+  /* height step, kept inside a band so the camera never has to chase */
+  let y=py;
+  if(G.dist>140 && Math.random()<.42) y=clamp(py+(Math.random()<.5?-1.25:1.25),-2.5,2.5);
+  const rising=y>py+.01;
+
+  /* runs are sized in time, not metres — a deck lasts about as long to
+     cross at 27 u/s as it does at 15, so the rhythm doesn't collapse */
+  const len=Math.max(6.5,reach*rnd(.75,1.55));
+  const end=lay(G.nextX,len,y);
+  const x0=G.nextX, span=end-x0;
+
+  /* the furthest a jump off the previous deck can carry you INTO this one.
+     nothing lethal may sit inside that window, or a gap you were forced to
+     jump would drop you straight onto a hazard. */
+  const landZone=reach*.70+1.6;
+  const hazMin=x0+landZone, hazMax=end-1.6;
+  let hazX=null;
+
+  if(hazMax>hazMin+1 && G.dist>90 && Math.random()<.46){
+    /* the star: only ever over solid ground, high enough that a ball simply
+       running underneath is clear of it. It punishes a jump you didn't need
+       to make — never one the terrain forced on you. */
+    const st=take(stars);
+    if(st){ hazX=rnd(hazMin,hazMax); st.live=true; st.x=hazX; st.y=y+2.95; st.r=Math.random()*6.28; }
+  }
+  if(hazX===null && G.dist>200 && hazMax>hazMin && Math.random()<.36){
+    /* the gate hangs in the jump arc, so the boost has to be jumped for */
+    const g=take(gates);
+    if(g){ g.live=true; g.x=rnd(hazMin,hazMax); g.y=y+GATE_UP; g.hit=false; }
+  }
+
+  /* orbs along the deck, skipping whatever the hazard occupies */
+  const n=RI(2,4);
+  for(let i=0;i<n;i++){
+    const ox=x0+1.8+i*2.6;
+    if(ox>end-1) break;
+    if(hazX!==null && Math.abs(ox-hazX)<2.2) continue;   /* nothing tempting under the blade */
+    const o=take(orbs); if(!o) break;
+    o.live=true; o.x=ox; o.y=y+1.5; o.z=0;
+  }
+
+  /* the gap, as a fraction of ONE jump's reach.
+     A double jump carries 1.59x that, so anything past 1.0 can only be
+     crossed by tapping again in the air — which is how the second tap stops
+     being a safety net and starts being the game. The terrain earns its way
+     there rather than opening with it. */
+  const d=G.dist;
+  let lo=.34, hi=.60, dblChance=0;
+  if(d>300){ lo=.40; hi=.78; dblChance=.10; }
+  if(d>900){ lo=.45; hi=.92; dblChance=.22; }
+  if(d>1800){ lo=.52; hi=1.00; dblChance=.30; }
+  let f=rnd(lo,hi);
+  if(Math.random()<dblChance) f=rnd(1.06,1.34);   /* needs the air tap */
+  if(rising) f*=.68;                              /* climbing costs air time */
+  const gap=Math.max(2.4,reach*f);
+
+  /* orbs strung across the gap, so the reward for a good jump is a cascade */
+  const arcN=gap>6?3:2;
+  for(let i=0;i<arcN;i++){
+    const o=take(orbs); if(!o) break;
+    const t=(i+1)/(arcN+1);
+    o.live=true; o.x=end+gap*t; o.z=0;
+    o.y=y+.9+Math.sin(t*Math.PI)*1.5;
+  }
+
+  G.nextX=end+gap;
+  G.lastGap=gap; G.lastReach=reach;
+}
+
+/* ============================================================
+   THE RIPPLE
+
+   A landing wakes the world. Anything the front passes wakes up and
+   sends out a circle of its own, and each step outward scores more
+   than the last — so a tap that spreads beats several that don't.
+   ============================================================ */
+function emit(x,y,d){
+  ripples.push({x,y,t:G.t,d});
+  const r=ringItems.find(i=>!i.live) || ringItems[0];
+  r.live=true; r.x=x; r.y=y; r.t0=G.t; r.life=RIP_LIFE*.8; r.d=d;
+  /* push into the floor shader, overwriting the oldest slot */
+  let slot=0, oldest=1e9;
+  for(let i=0;i<RIPU.length;i++){ if(RIPU[i].z<oldest){oldest=RIPU[i].z;slot=i;} }
+  RIPU[slot].set(x,0,G.t,d);
+  G.pulse=Math.min(1,G.pulse+(d?.20:.34));
+}
+
+/* the cascade, resolved the moment it starts.
+   Racing expanding fronts against each other doesn't work — the first front
+   is always ahead of the ones it spawns, so it eats everything and nothing
+   ever chains. This is a breadth-first sweep instead: the tap wakes what is
+   within reach, each of those wakes what is within reach of IT, and every
+   step outward pays more than the last. The rings are the show; this is the
+   rule. */
+function cascadeFrom(x,y,boosted){
+  const R0=(boosted?CHAIN_R0*1.3:CHAIN_R0), R1=(boosted?CHAIN_R*1.3:CHAIN_R);
+  let frontier=[{x,y}], depth=0;
+  while(frontier.length && depth<RIP_MAX){
+    const reach=depth===0?R0:R1, next=[];
+    for(const f of frontier){
+      for(const o of orbs.items){
+        if(!o.live) continue;
+        if(Math.hypot(o.x-f.x,o.y-f.y)<reach){ o.live=false; next.push({x:o.x,y:o.y}); }
+      }
+    }
+    if(!next.length) break;
+    depth++;
+    G.score+=8*depth*next.length;
+    for(const n of next) pending.push({x:n.x,y:n.y,d:depth,t:G.t+depth*.085});
+    frontier=next;
+  }
+  if(depth>0){
+    G.chain=depth; G.chainT=1.2;
+    Snd.orb(depth);
+    G.pulse=Math.min(1,G.pulse+.055*depth);
+  }
+  return depth;
+}
+
+function land(x,y){
+  G.chain=0; G.chainT=.9;
+  emit(x,y,0);
+  Snd.land(0);
+  G.shake=Math.max(G.shake,.22);
+  cascadeFrom(x,y+1.0,G.boost>0);
+}
+
+/* ============================================================
+   SIM — fixed step
+   ============================================================ */
+const STEP=1/120;
+const In={tap:0};
+
+function surfaceAt(x){
+  for(const r of G.runs) if(x>=r.x0 && x<=r.x1) return r.y;
+  return null;
+}
+
+function step(dt){
+  G.t+=dt;
+  G.pulse=Math.max(0,G.pulse-dt*1.7);
+  G.hit=Math.max(0,G.hit-dt*1.8);
+  G.shake=Math.max(0,G.shake-dt*2.6);
+  if(G.chainT>0) G.chainT-=dt;
+
+  if(!G.run){ In.tap=0; return; }
+
+  /* input — every tap jumps, on the ground or once in the air */
+  while(In.tap>0){
+    In.tap--;
+    if(G.grounded){ G.vy=JUMP; G.grounded=false; G.jumps=1; Snd.jump(); }
+    else if(G.jumps<2){ G.vy=JUMP2; G.jumps=2; Snd.dbl();
+      emit(G.x,G.y,0); cascadeFrom(G.x,G.y,G.boost>0);
+    }
+  }
+
+  G.v=Math.min(VMAX,G.v+ACCEL*dt);
+  if(G.boost>0){ G.boost-=dt; }
+  const speed=G.v*(G.boost>0?BOOST_X:1);
+  G.x+=speed*dt;
+  G.dist+=speed*dt;
+
+  /* gravity, then a swept test: did this step cross a deck from above? */
+  const py=G.y;
+  G.vy-=GRAV*dt;
+  G.y+=G.vy*dt;
+  const s=surfaceAt(G.x);
+  if(s!==null && G.vy<=0 && G.y<=s+BR && py>=s+BR-.02){
+    G.y=s+BR; G.vy=0;
+    if(!G.grounded){ G.grounded=true; G.jumps=0; land(G.x,s+.05); }
+  } else {
+    G.grounded=false;
+  }
+
+  if(G.y<DIE_Y){ die(); return; }
+
+  /* terrain ahead */
+  while(G.nextX < G.x+130) spawnRun();
+  /* retire what's behind */
+  while(G.runs.length && G.runs[0].x1 < G.x-40) G.runs.shift();
+  for(const p of pads.items) if(p.live && p.x<G.x-40) p.live=false;
+  for(const c of caps.items) if(c.live && c.x<G.x-40) c.live=false;
+  for(const o of orbs.items) if(o.live && o.x<G.x-14) o.live=false;
+
+  /* stars */
+  for(const st of stars.items){
+    if(!st.live) continue;
+    st.r+=STAR_SPIN*dt;
+    if(st.x<G.x-14){ st.live=false; continue; }
+    if(Math.hypot(st.x-G.x, st.y-G.y) < STAR_R+BR){ die(); return; }
+  }
+
+  /* gates */
+  for(const g of gates.items){
+    if(!g.live) continue;
+    if(g.x<G.x-14){ g.live=false; continue; }
+    if(!g.hit && Math.abs(g.x-G.x)<.55 && Math.abs(g.y-G.y)<GATE_R-BR+.28){
+      g.hit=true; G.boost=BOOST_T; G.score+=60; G.gates=(G.gates||0)+1;
+      G.shake=Math.max(G.shake,.4); Snd.boost();
+      emit(G.x,G.y,1); cascadeFrom(G.x,G.y,true);
+    }
+  }
+
+  /* direct pickup, for orbs the ripple didn't reach */
+  for(const o of orbs.items){
+    if(!o.live) continue;
+    if(Math.hypot(o.x-G.x,o.y-G.y)<BR+.42){
+      o.live=false; G.score+=5; emit(o.x,o.y,1);
+      cascadeFrom(o.x,o.y,G.boost>0);
+    }
+  }
+
+  for(let i=pending.length-1;i>=0;i--){
+    if(pending[i].t<=G.t){ const p=pending[i]; emit(p.x,p.y,p.d); pending.splice(i,1); }
+  }
+  for(let i=ripples.length-1;i>=0;i--) if(G.t-ripples[i].t>RIP_LIFE) ripples.splice(i,1);
+  G.score+=speed*dt*.6;
+}
+
+function die(){
+  if(!G.run) return;
+  G.run=false; G.over=true; G.hit=1; G.shake=1.2;
+  Snd.dead();
+  flash.style.transition="none"; flash.style.opacity=".75";
+  requestAnimationFrame(()=>{flash.style.transition="opacity .55s";flash.style.opacity="0";});
+  const sc=Math.floor(G.score);
+  G.best=Math.max(G.best,sc);
+  try{ localStorage.setItem("novo.ripple3d.best",String(G.best)); }catch(e){}
+  el("title").textContent=sc.toLocaleString();
+  el("sub").textContent=Math.floor(G.dist)+" M · BEST "+G.best.toLocaleString();
+  el("hint").textContent="TAP TO RUN AGAIN";
+  el("tag").textContent="LONGEST CHAIN ×"+Math.max(1,G.chain);
+  setTimeout(()=>el("card").classList.add("on"),300);
+}
+
+function reset(){
+  for(const p of [pads,caps,orbs,gates,stars]) p.items.forEach(i=>i.live=false);
+  ringItems.forEach(r=>r.live=false);
+  ripples.length=0; pending.length=0;
+  RIPU.forEach(r=>r.set(0,0,-99,0));
+  Object.assign(G,{run:true,over:false,x:0,y:BR,vy:0,v:V0,grounded:true,jumps:0,
+    dist:0,score:0,boost:0,hit:0,shake:0,pulse:0,chain:0,chainT:0,nextX:0,runs:[],lastGap:0});
+  lay(-6,22,0); G.nextX=G.runs[0].x1+4.5;   /* a clean opening straight */
+  while(G.nextX<130) spawnRun();
+  el("card").classList.remove("on");
+}
+try{ G.best=+localStorage.getItem("novo.ripple3d.best")||0; }catch(e){}
+
+/* ---------- input ---------- */
+addEventListener("pointerdown",()=>{
+  Snd.init();
+  if(!G.run){ if(!G.started||G.over){ G.started=true; reset(); } return; }
+  In.tap=Math.min(3,In.tap+1);
+},{passive:true});
+addEventListener("keydown",e=>{
+  if(e.code!=="Space"&&e.code!=="ArrowUp") return;
+  e.preventDefault(); Snd.init();
+  if(!G.run){ if(!G.started||G.over){ G.started=true; reset(); } return; }
+  In.tap=Math.min(3,In.tap+1);
+});
+for(const ev of ["blur","pagehide"]) addEventListener(ev,()=>{ In.tap=0; });
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+let last=performance.now(), acc=0;
+function frame(now){
+  const raw=Math.min(.05,(now-last)/1000); last=now;
+  acc+=raw; let n=0;
+  while(acc>=STEP && n<8){ step(STEP); acc-=STEP; n++; }
+
+  const sp=(G.v-V0)/(VMAX-V0);
+
+  /* ball */
+  ball.position.set(G.x,G.y,0);
+  ball.rotation.z-=G.v*.9/BR*raw;
+  const squash=G.grounded?1+Math.min(.16,G.shake*.5):1;
+  ball.scale.set(1/Math.sqrt(squash),squash,1/Math.sqrt(squash));
+  ballLight.position.set(G.x,G.y+.4,1.6);
+  ballLight.intensity=22+G.pulse*26+(G.boost>0?18:0);
+  halo.position.copy(ball.position);
+  halo.material.opacity=.42+G.pulse*.35+(G.boost>0?.2:0);
+  halo.scale.setScalar(2.9+G.pulse*1.4);
+
+  /* pads + caps */
+  let k=0;
+  for(const p of pads.items){ if(!p.live) continue;
+    P.set(p.x,p.y-.26,0); Q.identity(); S.set(p.s,1,p.s);
+    M.compose(P,Q,S); pads.mesh.setMatrixAt(k++,M); }
+  pads.mesh.count=k; pads.mesh.instanceMatrix.needsUpdate=true;
+
+  k=0; E.set(-Math.PI/2,0,0); Q.setFromEuler(E);
+  for(const c of caps.items){ if(!c.live) continue;
+    P.set(c.x,c.y+.005,0); S.set(c.s,c.s,c.s);
+    M.compose(P,Q,S); caps.mesh.setMatrixAt(k++,M); }
+  caps.mesh.count=k; caps.mesh.instanceMatrix.needsUpdate=true;
+
+  /* orbs bob */
+  k=0;
+  for(const o of orbs.items){ if(!o.live) continue;
+    P.set(o.x,o.y+Math.sin(G.t*3+o.x)*.13,0);
+    E.set(G.t*1.4,G.t*1.1,0); Q.setFromEuler(E); S.setScalar(1);
+    M.compose(P,Q,S); orbs.mesh.setMatrixAt(k++,M); }
+  orbs.mesh.count=k; orbs.mesh.instanceMatrix.needsUpdate=true;
+
+  /* gates face the runner */
+  k=0; E.set(0,Math.PI/2,0); Q.setFromEuler(E);
+  for(const g of gates.items){ if(!g.live) continue;
+    P.set(g.x,g.y,0); S.setScalar(g.hit?.6:1);
+    M.compose(P,Q,S); gates.mesh.setMatrixAt(k++,M); }
+  gates.mesh.count=k; gates.mesh.instanceMatrix.needsUpdate=true;
+
+  /* stars spin in the plane you can see */
+  k=0;
+  for(const st of stars.items){ if(!st.live) continue;
+    P.set(st.x,st.y,0); E.set(0,0,st.r); Q.setFromEuler(E); S.setScalar(1);
+    M.compose(P,Q,S); stars.mesh.setMatrixAt(k++,M); }
+  stars.mesh.count=k; stars.mesh.instanceMatrix.needsUpdate=true;
+
+  /* ripple rings — expand, fade, retire */
+  k=0; E.set(-Math.PI/2,0,0); Q.setFromEuler(E);
+  for(const r of ringItems){
+    if(!r.live) continue;
+    const age=G.t-r.t0;
+    if(age>r.life){ r.live=false; continue; }
+    const t=age/r.life;
+    P.set(r.x,r.y+.06,0); S.setScalar(.4+t*RIP_SPD*r.life*.9);
+    M.compose(P,Q,S); rings.setMatrixAt(k,M);
+    const a=(1-t)*(1-t);
+    COL.setRGB(a*.55,a*.85,a);
+    rings.setColorAt(k,COL);
+    k++;
+  }
+  rings.count=k; rings.instanceMatrix.needsUpdate=true;
+  if(rings.instanceColor) rings.instanceColor.needsUpdate=true;
+
+  /* backdrop */
+  k=0;
+  for(const b of bgData){
+    b.r+=b.sp*raw;
+    if(b.x<G.x-60) b.x+=BGN*30;
+    P.set(b.x,b.y,b.z); E.set(0,0,b.r); Q.setFromEuler(E); S.setScalar(b.s);
+    M.compose(P,Q,S); bgRings.setMatrixAt(k++,M);
+  }
+  bgRings.instanceMatrix.needsUpdate=true;
+
+  /* floor follows, and takes the live ripples */
+  floor.position.x=G.x;
+  floorMat.uniforms.uT.value=G.t;
+  floorMat.uniforms.uX.value=G.x;
+
+  /* camera: side-on with depth, easing to the run height, widening with speed */
+  const wantY=G.y*.5+1.4, wantF=54+sp*8+(G.boost>0?6:0);
+  G.camY+=(wantY-G.camY)*Math.min(1,raw*3.4);
+  G.fov +=(wantF-G.fov)*Math.min(1,raw*2.6);
+  const sh=G.shake*G.shake;
+  cam.position.set(
+    G.x-13.0+Math.sin(G.t*47)*sh*.55,
+    G.camY+5.2+Math.sin(G.t*39)*sh*.55,
+    5.2+sp*.6);
+  cam.lookAt(G.x+11.0, G.camY-.3, -1.4);
+  if(Math.abs(cam.fov-G.fov)>.01){ cam.fov=G.fov; cam.updateProjectionMatrix(); }
+
+  post.uniforms.uAmt.value=sp+(G.boost>0?.5:0);
+  post.uniforms.uT.value=G.t;
+  post.uniforms.uHit.value=G.hit;
+  post.uniforms.uPulse.value=G.pulse;
+  bloom.strength=.55+sp*.14+G.pulse*.16;
+
+  el("dist").textContent=Math.floor(G.dist);
+  el("score").textContent=Math.floor(G.score).toLocaleString();
+  el("spdf").style.width=(5+sp*95)+"%";
+  const ch=el("chain");
+  if(G.chainT>0&&G.chain>1){ ch.textContent="CHAIN ×"+G.chain; ch.classList.add("on"); }
+  else ch.classList.remove("on");
+
+  composer.render();
+  requestAnimationFrame(frame);
+}
+
+/* a phone held in a queue must not dim mid-run */
+let wake=null;
+const holdWake=async()=>{ try{ if("wakeLock" in navigator && !wake)
+  wake=await navigator.wakeLock.request("screen"); }catch(e){} };
+addEventListener("pointerdown",holdWake,{once:true});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible") holdWake(); else wake=null;
+});
+
+addEventListener("resize",()=>{
+  renderer.setSize(innerWidth,innerHeight);
+  composer.setSize(innerWidth,innerHeight);
+  bloom.resolution.set(innerWidth,innerHeight);
+  cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix();
+});
+
+/* a still, playable-looking world behind the title card */
+lay(-6,22,0); G.nextX=G.runs[0].x1+4.5;
+while(G.nextX<130) spawnRun();
+G.run=false;
+el("card").classList.add("on");
+el("boot").remove();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
