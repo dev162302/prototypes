@@ -23,11 +23,6 @@
   .v.sm{font-size:22px}
   #score{color:#7fd4ff}
 
-  /* chain readout — only visible while a cascade is running */
-  #chain{position:absolute;left:0;right:0;top:34%;text-align:center;opacity:0;
-    transition:opacity .16s;font-size:13px;letter-spacing:.3em;color:#7fd4ff;font-weight:600}
-  #chain.on{opacity:1}
-
   #spd{position:absolute;left:26px;right:26px;bottom:calc(26px + env(safe-area-inset-bottom));
     height:2px;background:rgba(127,212,255,.14);border-radius:2px;overflow:hidden}
   #spdf{height:100%;width:0%;background:linear-gradient(90deg,#0d63cf,#7fd4ff);
@@ -57,13 +52,12 @@
       <div class="k">SCORE</div><div class="v sm" id="score">0</div>
     </div>
   </div>
-  <div id="chain"></div>
   <div id="spd"><div id="spdf"></div></div>
   <div id="centre"><div id="card">
     <div class="big" id="title">RIPPLE RUN</div>
-    <div class="sub" id="sub">ONE TAP · ONE RIPPLE</div>
+    <div class="sub" id="sub">ONE TAP · ONE JUMP</div>
     <div class="hint" id="hint">TAP TO JUMP &nbsp;·&nbsp; TAP AGAIN IN THE AIR</div>
-    <div class="tag" id="tag">EVERY LANDING SPREADS</div>
+    <div class="tag" id="tag">MIND THE BLADES</div>
   </div></div>
 </div>
 <div id="flash"></div>
@@ -80,20 +74,16 @@
 /* ============================================================
    RIPPLE RUN — WebGL build
 
-   The same game as the 2D original: a ball runs, you tap, it jumps,
-   and every landing sends a ripple out across the world. What the
-   ripple touches wakes up and ripples in turn, and each step
-   outward is worth more than the last — so a tap that spreads beats
-   several that don't. The campaign line as a scoring rule.
+   The same game as the 2D original: a ball runs a chain of logo-discs,
+   you tap, it jumps, and a mistimed jump costs you the run. The jump is
+   plain — no flash, no bloom-out — so nothing competes with reading the
+   gap in front of you.
 
    What the stack buys over the canvas build:
-   · the ripple is real geometry and a real shader, not drawn circles
-     — it travels across the floor plane in world space, and you
-     watch it recede in perspective
    · the path is a chain of discs, which is the logo shape repeated
      until it becomes the level itself
-   · everything is instanced: pads, orbs, stars, gates, ripple rings
-     and the backdrop are six draw calls between them
+   · everything is instanced: pads, orbs, stars, gates and the
+     backdrop are six draw calls between them
    · bloom, then one custom pass doing vignette, radial chromatic
      aberration and grain together
    · fixed-timestep physics, so the jump arc is identical at 60Hz
@@ -126,9 +116,6 @@ const GRAV=46, JUMP=13.2, JUMP2=11.4;
 const AIRT=2*JUMP/GRAV;
 const V0=15, VMAX=27, ACCEL=.62;
 const PAD_R=1.55, PAD_STEP=2.15;          /* disc radius, and spacing along the run */
-const RIP_SPD=15.5, RIP_LIFE=2.6;         /* how fast a ripple travels, how long it lives */
-const RIP_MAX=9;                          /* chain depth cap, as in the original */
-const CHAIN_R0=7.2, CHAIN_R=5.4;          /* what a tap wakes, then what each wake wakes */
 const STAR_R=1.15, STAR_SPIN=2.4;
 const GATE_R=1.0, GATE_UP=2.2, BOOST_T=2.4, BOOST_X=1.45;
 const DIE_Y=-7;
@@ -158,18 +145,16 @@ const rim=new THREE.DirectionalLight(C.brite,.9);    rim.position.set(9,4,-14); 
 const ballLight=new THREE.PointLight(C.brite,26,16,2); scene.add(ballLight);
 
 /* ============================================================
-   THE FLOOR — where the ripple actually lives
+   THE FLOOR — a world-anchored grid, far below the path
 
-   A single plane far below the path. Ripples are pushed in as
-   uniforms and expand in world space, so from this camera you watch
-   them travel away from you and flatten out with distance, which is
-   the whole reason to do this in 3D rather than draw circles.
+   It gives the discs something to float above and it carries the
+   speed: the grid is anchored in world space, so it streams past you
+   instead of sliding along with the camera.
    ============================================================ */
-const RIPU=[]; for(let i=0;i<8;i++) RIPU.push(new THREE.Vector4(0,0,-99,0));
 const floorMat=new THREE.ShaderMaterial({
   fog:true,
   uniforms:{
-    uRip:{value:RIPU}, uT:{value:0}, uX:{value:0},
+    uT:{value:0}, uX:{value:0},
     uA:{value:new THREE.Color(C.rib)}, uB:{value:new THREE.Color(C.brite)},
     fogColor:{value:new THREE.Color(C.deep)}, fogNear:{value:46}, fogFar:{value:168}
   },
@@ -178,7 +163,7 @@ const floorMat=new THREE.ShaderMaterial({
     void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz;
       gl_Position=projectionMatrix*viewMatrix*w; }`,
   fragmentShader:`
-    uniform vec4 uRip[8]; uniform float uT,uX; uniform vec3 uA,uB;
+    uniform float uT,uX; uniform vec3 uA,uB;
     uniform vec3 fogColor; uniform float fogNear,fogFar;
     varying vec3 vW;
     void main(){
@@ -187,21 +172,7 @@ const floorMat=new THREE.ShaderMaterial({
       vec2 q=p/7.0, w=fwidth(q);
       vec2 g=abs(fract(q)-.5)/w;
       float line=1.-min(min(g.x,g.y),1.);
-      vec3 col=uA*line*.30;
-
-      /* concentric rings, one per live ripple, each a travelling gaussian */
-      float e=0.;
-      for(int i=0;i<8;i++){
-        vec4 r=uRip[i];
-        float age=uT-r.z;
-        if(age<0.||age>${RIP_LIFE.toFixed(2)}) continue;
-        float d=distance(p,r.xy);
-        float rad=age*${RIP_SPD.toFixed(2)};
-        float ring=exp(-pow((d-rad)*.85,2.));
-        float trail=exp(-pow((d-rad*.62)*.30,2.))*.30;
-        e+=(ring+trail)*exp(-age*1.15)*(.46+r.w*.045);
-      }
-      col+=uB*min(e,1.35)*.80;
+      vec3 col=uA*line*.34+uB*line*.06;
 
       float fade=1.-smoothstep(52.,120.,abs(p.x-uX));
       col*=fade;
@@ -229,7 +200,7 @@ for(let i=0;i<BGN;i++) bgData.push({
    POOLS
    ============================================================ */
 const M=new THREE.Matrix4(), Q=new THREE.Quaternion(), E=new THREE.Euler(),
-      P=new THREE.Vector3(), S=new THREE.Vector3(), COL=new THREE.Color();
+      P=new THREE.Vector3(), S=new THREE.Vector3();
 
 function pool(geo,mat,n){
   const mesh=new THREE.InstancedMesh(geo,mat,n);
@@ -269,15 +240,6 @@ const stars=pool(starGeo,
   new THREE.MeshStandardMaterial({color:C.warn,emissive:C.warn,emissiveIntensity:.55,
     roughness:.35,metalness:.2}), 10);
 
-/* ripple rings that live at the height of the landing, not on the floor */
-const RINGN=14;
-const rings=new THREE.InstancedMesh(new THREE.TorusGeometry(1,.045,6,46),
-  new THREE.MeshBasicMaterial({color:C.brite,transparent:true,opacity:.9,
-    blending:THREE.AdditiveBlending,depthWrite:false,fog:false}), RINGN);
-rings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-rings.frustumCulled=false; scene.add(rings);
-const ringItems=Array.from({length:RINGN},()=>({live:false,x:0,y:0,t0:0,life:1,d:0}));
-
 /* ============================================================
    THE BALL
    ============================================================ */
@@ -306,21 +268,20 @@ composer.addPass(new RenderPass(scene,cam));
 const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),.62,.72,.72);
 composer.addPass(bloom);
 const post=new ShaderPass({
-  uniforms:{tDiffuse:{value:null},uAmt:{value:0},uT:{value:0},uHit:{value:0},uPulse:{value:0}},
+  uniforms:{tDiffuse:{value:null},uAmt:{value:0},uT:{value:0},uHit:{value:0}},
   vertexShader:`varying vec2 vUv; void main(){vUv=uv;
     gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   fragmentShader:`
-    uniform sampler2D tDiffuse; uniform float uAmt,uT,uHit,uPulse; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uAmt,uT,uHit; varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
     void main(){
       vec2 c=vUv-.5;
-      float k=(0.0012+uAmt*0.0030+uHit*0.011)*(1.+uPulse*.45);
+      float k=0.0012+uAmt*0.0030+uHit*0.011;
       vec3 col;
       col.r=texture2D(tDiffuse,vUv+c*k).r;
       col.g=texture2D(tDiffuse,vUv).g;
       col.b=texture2D(tDiffuse,vUv-c*k).b;
       col*=1.-smoothstep(.34,.92,length(c))*.60;                 /* vignette */
-      col+=vec3(.06,.14,.28)*uPulse*.20;                         /* ripple bloom-out */
       col+=(hash(vUv*vec2(1024.)+uT)-.5)*.030;                   /* grain */
       col+=uHit*vec3(.50,.10,.18);
       gl_FragColor=vec4(col,1.);
@@ -356,14 +317,12 @@ const G={
   run:false, over:false, started:false,
   x:0, y:BR, vy:0, v:V0, grounded:true, jumps:0,
   dist:0, score:0, best:0, t:0,
-  boost:0, hit:0, shake:0, pulse:0, chain:0, chainT:0,
+  boost:0, hit:0, shake:0, orbs:0,
   runs:[],                 /* {x0,x1,y} solid intervals */
   nextX:0, camX:0, camY:3.4, fov:52
 };
 const el=id=>document.getElementById(id);
 const flash=el("flash");
-const ripples=[];          /* live rings, for the floor shader */
-const pending=[];          /* cascade steps waiting their turn to show */
 
 /* ============================================================
    GENERATOR
@@ -448,7 +407,7 @@ function spawnRun(){
   if(rising) f*=.68;                              /* climbing costs air time */
   const gap=Math.max(2.4,reach*f);
 
-  /* orbs strung across the gap, so the reward for a good jump is a cascade */
+  /* orbs strung across the gap, so a good jump is worth taking */
   const arcN=gap>6?3:2;
   for(let i=0;i<arcN;i++){
     const o=take(orbs); if(!o) break;
@@ -468,55 +427,9 @@ function spawnRun(){
    sends out a circle of its own, and each step outward scores more
    than the last — so a tap that spreads beats several that don't.
    ============================================================ */
-function emit(x,y,d){
-  ripples.push({x,y,t:G.t,d});
-  const r=ringItems.find(i=>!i.live) || ringItems[0];
-  r.live=true; r.x=x; r.y=y; r.t0=G.t; r.life=RIP_LIFE*.8; r.d=d;
-  /* push into the floor shader, overwriting the oldest slot */
-  let slot=0, oldest=1e9;
-  for(let i=0;i<RIPU.length;i++){ if(RIPU[i].z<oldest){oldest=RIPU[i].z;slot=i;} }
-  RIPU[slot].set(x,0,G.t,d);
-  G.pulse=Math.min(1,G.pulse+(d?.20:.34));
-}
-
-/* the cascade, resolved the moment it starts.
-   Racing expanding fronts against each other doesn't work — the first front
-   is always ahead of the ones it spawns, so it eats everything and nothing
-   ever chains. This is a breadth-first sweep instead: the tap wakes what is
-   within reach, each of those wakes what is within reach of IT, and every
-   step outward pays more than the last. The rings are the show; this is the
-   rule. */
-function cascadeFrom(x,y,boosted){
-  const R0=(boosted?CHAIN_R0*1.3:CHAIN_R0), R1=(boosted?CHAIN_R*1.3:CHAIN_R);
-  let frontier=[{x,y}], depth=0;
-  while(frontier.length && depth<RIP_MAX){
-    const reach=depth===0?R0:R1, next=[];
-    for(const f of frontier){
-      for(const o of orbs.items){
-        if(!o.live) continue;
-        if(Math.hypot(o.x-f.x,o.y-f.y)<reach){ o.live=false; next.push({x:o.x,y:o.y}); }
-      }
-    }
-    if(!next.length) break;
-    depth++;
-    G.score+=8*depth*next.length;
-    for(const n of next) pending.push({x:n.x,y:n.y,d:depth,t:G.t+depth*.085});
-    frontier=next;
-  }
-  if(depth>0){
-    G.chain=depth; G.chainT=1.2;
-    Snd.orb(depth);
-    G.pulse=Math.min(1,G.pulse+.055*depth);
-  }
-  return depth;
-}
-
-function land(x,y){
-  G.chain=0; G.chainT=.9;
-  emit(x,y,0);
+function land(){
   Snd.land(0);
-  G.shake=Math.max(G.shake,.22);
-  cascadeFrom(x,y+1.0,G.boost>0);
+  G.shake=Math.max(G.shake,.16);   /* a small settle, nothing that flares */
 }
 
 /* ============================================================
@@ -532,10 +445,8 @@ function surfaceAt(x){
 
 function step(dt){
   G.t+=dt;
-  G.pulse=Math.max(0,G.pulse-dt*1.7);
   G.hit=Math.max(0,G.hit-dt*1.8);
   G.shake=Math.max(0,G.shake-dt*2.6);
-  if(G.chainT>0) G.chainT-=dt;
 
   if(!G.run){ In.tap=0; return; }
 
@@ -543,9 +454,7 @@ function step(dt){
   while(In.tap>0){
     In.tap--;
     if(G.grounded){ G.vy=JUMP; G.grounded=false; G.jumps=1; Snd.jump(); }
-    else if(G.jumps<2){ G.vy=JUMP2; G.jumps=2; Snd.dbl();
-      emit(G.x,G.y,0); cascadeFrom(G.x,G.y,G.boost>0);
-    }
+    else if(G.jumps<2){ G.vy=JUMP2; G.jumps=2; Snd.dbl(); }
   }
 
   G.v=Math.min(VMAX,G.v+ACCEL*dt);
@@ -561,7 +470,7 @@ function step(dt){
   const s=surfaceAt(G.x);
   if(s!==null && G.vy<=0 && G.y<=s+BR && py>=s+BR-.02){
     G.y=s+BR; G.vy=0;
-    if(!G.grounded){ G.grounded=true; G.jumps=0; land(G.x,s+.05); }
+    if(!G.grounded){ G.grounded=true; G.jumps=0; land(); }
   } else {
     G.grounded=false;
   }
@@ -590,24 +499,18 @@ function step(dt){
     if(g.x<G.x-14){ g.live=false; continue; }
     if(!g.hit && Math.abs(g.x-G.x)<.55 && Math.abs(g.y-G.y)<GATE_R-BR+.28){
       g.hit=true; G.boost=BOOST_T; G.score+=60; G.gates=(G.gates||0)+1;
-      G.shake=Math.max(G.shake,.4); Snd.boost();
-      emit(G.x,G.y,1); cascadeFrom(G.x,G.y,true);
+      G.shake=Math.max(G.shake,.32); Snd.boost();
     }
   }
 
-  /* direct pickup, for orbs the ripple didn't reach */
+  /* orbs are simply collected now */
   for(const o of orbs.items){
     if(!o.live) continue;
     if(Math.hypot(o.x-G.x,o.y-G.y)<BR+.42){
-      o.live=false; G.score+=5; emit(o.x,o.y,1);
-      cascadeFrom(o.x,o.y,G.boost>0);
+      o.live=false; G.orbs++; G.score+=25*(G.boost>0?2:1); Snd.orb(1);
     }
   }
 
-  for(let i=pending.length-1;i>=0;i--){
-    if(pending[i].t<=G.t){ const p=pending[i]; emit(p.x,p.y,p.d); pending.splice(i,1); }
-  }
-  for(let i=ripples.length-1;i>=0;i--) if(G.t-ripples[i].t>RIP_LIFE) ripples.splice(i,1);
   G.score+=speed*dt*.6;
 }
 
@@ -623,17 +526,14 @@ function die(){
   el("title").textContent=sc.toLocaleString();
   el("sub").textContent=Math.floor(G.dist)+" M · BEST "+G.best.toLocaleString();
   el("hint").textContent="TAP TO RUN AGAIN";
-  el("tag").textContent="LONGEST CHAIN ×"+Math.max(1,G.chain);
+  el("tag").textContent=G.orbs+" ORBS COLLECTED";
   setTimeout(()=>el("card").classList.add("on"),300);
 }
 
 function reset(){
   for(const p of [pads,caps,orbs,gates,stars]) p.items.forEach(i=>i.live=false);
-  ringItems.forEach(r=>r.live=false);
-  ripples.length=0; pending.length=0;
-  RIPU.forEach(r=>r.set(0,0,-99,0));
   Object.assign(G,{run:true,over:false,x:0,y:BR,vy:0,v:V0,grounded:true,jumps:0,
-    dist:0,score:0,boost:0,hit:0,shake:0,pulse:0,chain:0,chainT:0,nextX:0,runs:[],lastGap:0});
+    dist:0,score:0,boost:0,hit:0,shake:0,orbs:0,nextX:0,runs:[],lastGap:0});
   lay(-6,22,0); G.nextX=G.runs[0].x1+4.5;   /* a clean opening straight */
   while(G.nextX<130) spawnRun();
   el("card").classList.remove("on");
@@ -671,10 +571,10 @@ function frame(now){
   const squash=G.grounded?1+Math.min(.16,G.shake*.5):1;
   ball.scale.set(1/Math.sqrt(squash),squash,1/Math.sqrt(squash));
   ballLight.position.set(G.x,G.y+.4,1.6);
-  ballLight.intensity=22+G.pulse*26+(G.boost>0?18:0);
+  ballLight.intensity=26+(G.boost>0?16:0);
   halo.position.copy(ball.position);
-  halo.material.opacity=.42+G.pulse*.35+(G.boost>0?.2:0);
-  halo.scale.setScalar(2.9+G.pulse*1.4);
+  halo.material.opacity=.42+(G.boost>0?.18:0);
+  halo.scale.setScalar(2.9+(G.boost>0?.5:0));
 
   /* pads + caps */
   let k=0;
@@ -711,23 +611,6 @@ function frame(now){
     M.compose(P,Q,S); stars.mesh.setMatrixAt(k++,M); }
   stars.mesh.count=k; stars.mesh.instanceMatrix.needsUpdate=true;
 
-  /* ripple rings — expand, fade, retire */
-  k=0; E.set(-Math.PI/2,0,0); Q.setFromEuler(E);
-  for(const r of ringItems){
-    if(!r.live) continue;
-    const age=G.t-r.t0;
-    if(age>r.life){ r.live=false; continue; }
-    const t=age/r.life;
-    P.set(r.x,r.y+.06,0); S.setScalar(.4+t*RIP_SPD*r.life*.9);
-    M.compose(P,Q,S); rings.setMatrixAt(k,M);
-    const a=(1-t)*(1-t);
-    COL.setRGB(a*.55,a*.85,a);
-    rings.setColorAt(k,COL);
-    k++;
-  }
-  rings.count=k; rings.instanceMatrix.needsUpdate=true;
-  if(rings.instanceColor) rings.instanceColor.needsUpdate=true;
-
   /* backdrop */
   k=0;
   for(const b of bgData){
@@ -738,7 +621,7 @@ function frame(now){
   }
   bgRings.instanceMatrix.needsUpdate=true;
 
-  /* floor follows, and takes the live ripples */
+  /* floor follows the run */
   floor.position.x=G.x;
   floorMat.uniforms.uT.value=G.t;
   floorMat.uniforms.uX.value=G.x;
@@ -758,15 +641,11 @@ function frame(now){
   post.uniforms.uAmt.value=sp+(G.boost>0?.5:0);
   post.uniforms.uT.value=G.t;
   post.uniforms.uHit.value=G.hit;
-  post.uniforms.uPulse.value=G.pulse;
-  bloom.strength=.55+sp*.14+G.pulse*.16;
+bloom.strength=.55+sp*.14;
 
   el("dist").textContent=Math.floor(G.dist);
   el("score").textContent=Math.floor(G.score).toLocaleString();
   el("spdf").style.width=(5+sp*95)+"%";
-  const ch=el("chain");
-  if(G.chainT>0&&G.chain>1){ ch.textContent="CHAIN ×"+G.chain; ch.classList.add("on"); }
-  else ch.classList.remove("on");
 
   composer.render();
   requestAnimationFrame(frame);
