@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#00103f" />
+    <title>RIPPLE RUN</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        /* dvh, not vh: iOS Safari's vh includes the URL bar and the play
+           column ends up cropped under it */
+        height: 100dvh;
+        overflow: hidden;
+        background: #00103f;
+        color: #f4f9ff;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        /* stops double-tap zoom and pull-to-refresh mid-run; user-scalable=no
+           has been ignored by iOS Safari since iOS 10 */
+        touch-action: none;
+        overscroll-behavior: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      #ui {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .hud {
+        position: absolute;
+        top: calc(18px + env(safe-area-inset-top));
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-between;
+        padding: 0 24px;
+      }
+      .k {
+        font-size: 9px;
+        letter-spacing: 0.34em;
+        color: #5f92cf;
+        font-weight: 600;
+      }
+      .v.tick {
+        animation: tick 0.4s ease-out;
+      }
+      @keyframes tick {
+        0% { transform: scale(1); color: #f4f9ff; }
+        30% { transform: scale(1.18); color: #7fd4ff; }
+        100% { transform: scale(1); color: #f4f9ff; }
+      }
+      .v {
+        font-size: 30px;
+        font-weight: 200;
+        line-height: 1.05;
+        font-variant-numeric: tabular-nums;
+      }
+      /* the jump tank is the game's only resource — it reads as pips, not a
+         number, so it is legible at a glance with no sound and no haptics */
+      #tank {
+        display: flex;
+        gap: 5px;
+        justify-content: flex-end;
+        margin-top: 7px;
+        height: 12px;
+      }
+      .pip {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #7fd4ff;
+        box-shadow: 0 0 10px rgba(127, 212, 255, 0.75);
+      }
+      .pip.ghost {
+        background: transparent;
+        border: 1px solid rgba(127, 212, 255, 0.35);
+        box-shadow: none;
+      }
+      #more {
+        font-size: 13px;
+        color: #7fd4ff;
+        margin-left: 4px;
+        line-height: 11px;
+      }
+      #low {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 20%;
+        text-align: center;
+        font-size: 11px;
+        letter-spacing: 0.3em;
+        color: #ff8fa6;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      #low.on {
+        opacity: 1;
+      }
+      #centre {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 0 24px;
+      }
+      #card {
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+        transition: 0.32s cubic-bezier(0.2, 0.9, 0.25, 1);
+      }
+      #card.on {
+        opacity: 1;
+        transform: none;
+      }
+      .big {
+        font-size: clamp(40px, 14vw, 62px);
+        font-weight: 200;
+        letter-spacing: -0.02em;
+      }
+      .sub {
+        font-size: 11px;
+        letter-spacing: 0.32em;
+        color: #5f92cf;
+        margin-top: 8px;
+        font-weight: 600;
+      }
+      .hint {
+        margin-top: 24px;
+        font-size: 11px;
+        letter-spacing: 0.26em;
+        color: #9ec8f2;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #00103f;
+        color: #3f6ea6;
+        font-size: 10px;
+        letter-spacing: 0.32em;
+        z-index: 4;
+      }
+      #lost {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: #00103f;
+        color: #9ec8f2;
+        font-size: 11px;
+        letter-spacing: 0.24em;
+        z-index: 5;
+        text-align: center;
+        padding: 0 32px;
+      }
+      #lost.on {
+        display: grid;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-CDYoF7hg.js"></script>
+  </head>
+  <body>
+    <div id="ui">
+      <div class="hud">
+        <div>
+          <div class="k">DISTANCE</div>
+          <div class="v"><span id="dist">0</span><span style="font-size: 15px"> m</span></div>
+        </div>
+        <div style="text-align: right">
+          <div class="k">JUMPS</div>
+          <div id="tank"></div>
+        </div>
+      </div>
+      <div id="low">LOW ON JUMPS</div>
+      <div id="centre">
+        <div id="card">
+          <div class="big" id="title">RIPPLE RUN</div>
+          <div class="sub" id="sub">COLLECT PULSES · SPEND JUMPS</div>
+          <div class="hint" id="hint">TAP TO START</div>
+        </div>
+      </div>
+    </div>
+    <div id="boot">LOADING</div>
+    <div id="lost">GRAPHICS CONTEXT LOST<br /><br />RESTORING…</div>
+  </body>
+</html>
