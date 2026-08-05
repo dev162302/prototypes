@@ -62,6 +62,299 @@
         color: #5f92cf;
         font-weight: 600;
       }
+      /* ─────────────────────────────────────────────────────────────
+         POST-RUN FLOW
+         Two screens between dying and running again, and no more.
+         Rank leads over score, because rank is what makes you tap again.
+         ───────────────────────────────────────────────────────────── */
+      :root {
+        --deep: #00103f;
+        --ink: #041a4d;
+        --body: #0a4ea8;
+        --rail: #7fd4ff;
+        --white: #f4f9ff;
+        --dim: #5f92cf;
+        --gold: #ffd479;
+      }
+      .screen {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        background: var(--deep);
+        display: none;
+        flex-direction: column;
+        pointer-events: auto;
+        padding: calc(26px + env(safe-area-inset-top)) 22px
+          calc(20px + env(safe-area-inset-bottom));
+      }
+      .screen.on {
+        display: flex;
+      }
+      .eyebrow {
+        font-size: 9px;
+        letter-spacing: 0.34em;
+        color: var(--dim);
+        font-weight: 600;
+      }
+
+      /* ── the ripple: the campaign's own shape, doing the framing ── */
+      .rings {
+        position: relative;
+        display: grid;
+        place-items: center;
+        margin: 4vh 0 0;
+        height: 40vh;
+        min-height: 210px;
+      }
+      .rings i {
+        position: absolute;
+        border-radius: 50%;
+        border: 1px solid var(--rail);
+        opacity: 0;
+        width: 150px;
+        height: 150px;
+      }
+      .on .rings i {
+        animation: spread 1.5s cubic-bezier(0.16, 0.8, 0.3, 1) forwards;
+      }
+      .rings i:nth-child(2) {
+        animation-delay: 0.13s;
+      }
+      .rings i:nth-child(3) {
+        animation-delay: 0.26s;
+      }
+      @keyframes spread {
+        0% { transform: scale(0.28); opacity: 0.85; }
+        100% { transform: scale(2.05); opacity: 0.07; }
+      }
+      .rankBig {
+        position: relative;
+        font-size: 92px;
+        font-weight: 100;
+        letter-spacing: -0.05em;
+        line-height: 0.9;
+        color: var(--white);
+      }
+      .rankBig span {
+        font-size: 26px;
+        font-weight: 200;
+        letter-spacing: 0;
+        color: var(--rail);
+        vertical-align: 30px;
+        margin-right: 2px;
+      }
+      .rankOf {
+        position: relative;
+        margin-top: 10px;
+        font-size: 10px;
+        letter-spacing: 0.3em;
+        color: var(--dim);
+        font-weight: 600;
+      }
+
+      /* ── the run, stated as one line rather than three tiles ── */
+      .runLine {
+        text-align: center;
+        margin-top: 2vh;
+      }
+      .runScore {
+        font-size: 44px;
+        font-weight: 200;
+        letter-spacing: -0.02em;
+        color: var(--rail);
+        font-variant-numeric: tabular-nums;
+      }
+      .runParts {
+        margin-top: 7px;
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+      }
+      .runCause {
+        margin-top: 14px;
+        font-size: 9px;
+        letter-spacing: 0.32em;
+        color: #7d9dc8;
+        font-weight: 600;
+      }
+
+      /* ── name ── */
+      .nameBlock {
+        margin-top: auto;
+      }
+      .nameRow {
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+        margin-top: 10px;
+      }
+      #nameIn {
+        flex: 1;
+        min-width: 0;
+        background: var(--ink);
+        border: 1px solid rgba(127, 212, 255, 0.22);
+        border-radius: 12px;
+        color: var(--white);
+        font: inherit;
+        font-size: 16px; /* 16px or iOS Safari zooms the page on focus */
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        padding: 15px 16px;
+        outline: none;
+      }
+      #nameIn:focus {
+        border-color: var(--rail);
+      }
+      #reroll {
+        width: 52px;
+        border-radius: 50%;
+        border: 1px solid rgba(127, 212, 255, 0.28);
+        background: var(--ink);
+        color: var(--rail);
+        font-size: 19px;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .pill {
+        margin-top: 12px;
+        padding: 17px;
+        border-radius: 40px;
+        text-align: center;
+        font-size: 11px;
+        letter-spacing: 0.3em;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .pill.primary {
+        background: var(--rail);
+        color: #00214f;
+      }
+      .pill.ghost {
+        border-color: rgba(127, 212, 255, 0.3);
+        color: #9ec8f2;
+      }
+
+      /* ── leaderboard ── */
+      .lbHead {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .lbTitle {
+        font-size: 24px;
+        font-weight: 200;
+        letter-spacing: -0.01em;
+      }
+      #lbList {
+        flex: 1;
+        overflow-y: auto;
+        margin: 16px -6px 0;
+        -webkit-overflow-scrolling: touch;
+      }
+      .lbRow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 10px;
+        border-radius: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      .lbRow + .lbRow {
+        border-top: 1px solid rgba(127, 212, 255, 0.07);
+      }
+      .lbRow.me {
+        background: linear-gradient(
+          90deg,
+          rgba(127, 212, 255, 0.17),
+          rgba(127, 212, 255, 0.04)
+        );
+        border-top-color: transparent;
+      }
+      .lbPos {
+        width: 22px;
+        font-size: 12px;
+        color: var(--dim);
+        font-weight: 600;
+      }
+      .lbRow:first-child .lbPos {
+        color: var(--gold);
+      }
+      .lbName {
+        flex: 1;
+        min-width: 0;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        color: #cfe4fa;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lbRow.me .lbName {
+        color: var(--white);
+      }
+      .lbSub {
+        display: block;
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        color: var(--dim);
+        margin-top: 3px;
+      }
+      .lbScore {
+        font-size: 16px;
+        color: var(--rail);
+      }
+      /* the signature line: who you are chasing, by name */
+      .chase {
+        margin-top: 12px;
+        padding: 13px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(127, 212, 255, 0.2);
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        color: #9ec8f2;
+        text-align: center;
+      }
+      .chase b {
+        color: var(--rail);
+        font-weight: 600;
+      }
+      .lbEmpty {
+        text-align: center;
+        color: var(--dim);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        margin-top: 48px;
+      }
+      #ranksBtn {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: calc(28px + env(safe-area-inset-bottom));
+        pointer-events: auto;
+        cursor: pointer;
+        padding: 11px 24px;
+        border-radius: 30px;
+        border: 1px solid rgba(127, 212, 255, 0.3);
+        color: #9ec8f2;
+        font-size: 10px;
+        letter-spacing: 0.28em;
+        font-weight: 600;
+        opacity: 0;
+        transition: opacity 0.25s;
+      }
+      #ranksBtn.on {
+        opacity: 1;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .on .rings i {
+          animation: none;
+          opacity: 0.16;
+          transform: scale(1.5);
+        }
+      }
       .sub2 {
         font-size: 10px;
         letter-spacing: 0.16em;
@@ -248,7 +541,7 @@
         display: grid;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-CvGFcotg.js"></script>
+    <script type="module" crossorigin src="./assets/index-Bo9YoN6M.js"></script>
   </head>
   <body>
     <div id="ui">
@@ -266,13 +559,51 @@
       </div>
       <div id="low">LOW ON JUMPS</div>
       <div id="capup">MAX JUMPS +1</div>
+      <div id="ranksBtn">RANKS</div>
+
+      <!-- 1 — your run, and the name that goes on the board -->
+      <div class="screen" id="result">
+        <div class="eyebrow">RUN ENDED</div>
+        <div class="rings">
+          <i></i><i></i><i></i>
+          <div style="text-align: center">
+            <div class="rankBig"><span>#</span><b id="rRank">1</b></div>
+            <div class="rankOf" id="rOf">OF 1 ON THIS DEVICE</div>
+          </div>
+        </div>
+        <div class="runLine">
+          <div class="runScore" id="rScore">0</div>
+          <div class="runParts" id="rParts">0 m + 0 orbs</div>
+          <div class="runCause" id="rCause"></div>
+        </div>
+        <div class="nameBlock">
+          <div class="eyebrow">THIS NAME SHOWS ON THE BOARD</div>
+          <div class="nameRow">
+            <input id="nameIn" maxlength="14" spellcheck="false" autocomplete="off" />
+            <div id="reroll" title="New name">&#8635;</div>
+          </div>
+          <div class="pill primary" id="toRanks">SEE MY RANK</div>
+          <div class="pill ghost" id="againFast">PLAY AGAIN</div>
+        </div>
+      </div>
+
+      <!-- 2 — the board -->
+      <div class="screen" id="ranks">
+        <div class="lbHead">
+          <div class="lbTitle">LEADERBOARD</div>
+          <div class="eyebrow">BEST RUN · THIS DEVICE</div>
+        </div>
+        <div id="lbList"></div>
+        <div class="chase" id="chase"></div>
+        <div class="pill primary" id="againFromLb">PLAY AGAIN</div>
+        <div class="pill ghost" id="lbClose">CLOSE</div>
+      </div>
+
       <div id="centre">
         <div id="card">
           <div class="big" id="title">RIPPLE RUN</div>
           <div class="sub" id="sub">COLLECT PULSES · SPEND JUMPS</div>
           <div class="hint" id="hint">TAP TO START</div>
-          <div id="board"></div>
-          <div id="handle"></div>
         </div>
       </div>
     </div>
