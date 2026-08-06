@@ -1,0 +1,34 @@
+# These folders are already-built static output, so there is nothing to
+# compile. The legacy Pages (Jekyll) builder kept failing with a zero-duration
+# "Page build failed" and no detail; this path uploads the tree as an artifact
+# and deploys it directly, which is the supported route for static sites.
+name: Deploy static prototypes to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4
