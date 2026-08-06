@@ -456,6 +456,18 @@
         border: 1px solid rgba(127, 212, 255, 0.35);
         box-shadow: none;
       }
+      /* the disc's bonus charge — sits past the ceiling, so it gets its own
+         colour rather than pretending to be an ordinary pip */
+      .pip.bonus {
+        background: #ffd479;
+        box-shadow: 0 0 12px rgba(255, 212, 121, 0.9);
+        animation: bonusPop 0.45s ease-out;
+      }
+      @keyframes bonusPop {
+        0% { transform: scale(0.2); }
+        60% { transform: scale(1.5); }
+        100% { transform: scale(1); }
+      }
       #more {
         font-size: 13px;
         color: #7fd4ff;
@@ -541,7 +553,7 @@
         display: grid;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-67TC_8oX.js"></script>
+    <script type="module" crossorigin src="./assets/index-DQ6hvqS6.js"></script>
   </head>
   <body>
     <div id="ui">
