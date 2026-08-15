@@ -30,68 +30,95 @@
 </head>
 <body>
 <iframe class="scr" id="f-game" src="game/index.html" title="Game"></iframe>
-  <iframe class="scr" id="f-intro" src="intro.html"       title="Intro"></iframe>
-  <iframe class="scr" id="f-ended" src="run-ended.html"   title="Run ended"></iframe>
-  <iframe class="scr" id="f-board" src="leaderboard.html" title="Leaderboard"></iframe>
+  <iframe class="scr" id="f-intro" title="Intro"></iframe>
+  <iframe class="scr" id="f-ended" title="Run ended"></iframe>
+  <iframe class="scr" id="f-board" title="Leaderboard"></iframe>
 
 <script>
 (function () {
   'use strict';
-  var F = {
-    intro: document.getElementById('f-intro'),
-    game:  document.getElementById('f-game'),
-    ended: document.getElementById('f-ended'),
-    board: document.getElementById('f-board')
-  };
 
-  /* -------------------------------------------------------------- board -- */
-  // Same key the game's own leaderboard uses, so a run recorded either way
-  // lands on one board rather than two that disagree.
+  /* Which frame set to serve. Figma draws this flow twice: 393x852 portrait,
+     and 1920x1080 as scene-left / panel-right. Pick whichever the window is
+     shaped more like — the geometric mean of the two aspects (0.906) is the
+     crossover, so a portrait window gets the portrait design and a landscape
+     one the desktop design, with no table of device widths. */
+  var CUT = Math.sqrt((1920 / 1080) * (393 / 852));
+  var SRC = {
+    m: { intro: 'intro.html',   ended: 'run-ended.html',   board: 'leaderboard.html' },
+    d: { intro: 'd-intro.html', ended: 'd-run-ended.html', board: 'd-leaderboard.html' }
+  };
+  /* Same components in both, different node ids. Board rows are numbered in
+     tens in both sets, and the field offsets inside a row are identical, so one
+     shape describes both. */
+  var IDS = {
+    m: { score:'636:2040', label:'636:2048', face:'636:2047', arrow:'636:2107',
+         again:'636:2219', boardAgain:'599:1600',
+         rowBtn0:1332, row0:1335, mine:{btn:'599:1387', base:1390} },
+    d: { score:'643:3961', label:'643:3969', face:'643:3968', arrow:null,
+         again:'643:4140', boardAgain:'643:4788',
+         rowBtn0:4517, row0:4523, mine:{btn:'643:4573', base:4578} }
+  };
+  var TICK = 'assets/76e9a71ee3eac772562e5c50f1ca5f0392e539e9.svg';
+
+  var F = { intro: document.getElementById('f-intro'), game: document.getElementById('f-game'),
+            ended: document.getElementById('f-ended'), board: document.getElementById('f-board') };
+  var mode = null, current = null, run = null, entry = null, nameInput = null, confirmed = false;
+  var ids = function () { return IDS[mode]; };
+
+  /* ---------------------------------------------------------------- board -- */
   var KEY = 'wizard.board.v1', MAX = 10;
   function loadBoard() {
     try { var l = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(l) ? l : []; }
     catch (e) { return []; }
   }
   function saveEntry(e) {
-    var l = loadBoard();
-    l.push(e);
+    var l = loadBoard(); l.push(e);
     l.sort(function (a, b) { return b.score - a.score || a.metres - b.metres; });
     l = l.slice(0, MAX);
-    try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (err) { /* private mode */ }
-    return l.indexOf(e);
+    try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (err) {}
+  }
+  function indexOfEntry(l, e) {
+    if (!e) return -1;
+    for (var i = 0; i < l.length; i++)
+      if (l[i].at === e.at && l[i].handle === e.handle && l[i].score === e.score) return i;
+    return -1;
   }
 
-  /* ------------------------------------------------------------ helpers -- */
+  /* -------------------------------------------------------------- helpers -- */
   function doc(f) { return f.contentDocument; }
-  function node(f, id) { return doc(f).querySelector('[data-node-id="' + id + '"]'); }
-  function setText(f, id, txt) { var n = node(f, id); if (n) { var p = n.querySelector('p') || n; p.textContent = txt; } }
+  function node(f, id) { return id && doc(f) ? doc(f).querySelector('[data-node-id="' + id + '"]') : null; }
+  function setText(f, id, t) { var n = node(f, id); if (n) { (n.querySelector('p') || n).textContent = t; } }
   function ready(f, cb) {
-    // An iframe that has not loaded yet still exposes a document — about:blank,
-    // already readyState 'complete'. Testing readyState alone therefore fires
-    // the callback against the wrong, empty document and everything it wires up
-    // is silently thrown away. #screen is the sentinel that the real page is in.
+    // An unloaded iframe still exposes about:blank at readyState 'complete';
+    // #screen is the sentinel that the real page is actually in.
     var d = doc(f);
     if (d && d.readyState === 'complete' && d.getElementById('screen')) cb();
     else f.addEventListener('load', function () { cb(); }, { once: true });
   }
-  // Offset of `el` within `root`, ignoring any transforms in between.
-  function offsetIn(el, root) {
-    var x = 0, y = 0, n = el;
-    while (n && n !== root) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
-    return { left: x, top: y };
+  /* Position of `el` inside `root`'s own untransformed coordinate space.
+
+     offsetLeft/offsetTop cannot be used: they ignore transforms, and Figma
+     centres things with left:calc(50% + n) plus translateX(-50%). On the
+     desktop frames that put the name field 300px right and 400px down of where
+     it belongs — the placeholder ended up floating over the body copy.
+
+     Client rects include every transform, so dividing the delta by root's own
+     scale converts back to the space the Figma coordinates are written in. */
+  function localBox(el, root) {
+    var rr = root.getBoundingClientRect(), er = el.getBoundingClientRect();
+    var scale = rr.width / root.offsetWidth || 1;
+    return { left: (er.left - rr.left) / scale, top: (er.top - rr.top) / scale,
+             width: er.width / scale, height: er.height / scale };
   }
 
   function show(name) {
     for (var k in F) F[k].classList.toggle('on', k === name);
     current = name;
-    // iOS Safari scrolls the page to reveal the keyboard and does not scroll
-    // back when it closes, so the next screen lands half off the top. overflow
-    // hidden does not stop it — the keyboard moves the visual viewport, not the
-    // document. Reset on every transition; harmless everywhere else.
+    // iOS scrolls the page to reveal the keyboard and does not scroll back.
     scrollTo(0, 0);
     if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
   }
-  var current = null, run = null, entry = null;
 
   /* --------------------------------------------------------------- game -- */
   var gameReady = false, wantStart = false;
@@ -105,82 +132,71 @@
     if (d.type === 'rw:ready') {
       gameReady = true;
       if (wantStart) { wantStart = false; F.game.contentWindow.postMessage({ type: 'rw:start' }, '*'); }
-    } else if (d.type === 'rw:ended') {
-      run = d.run;
-      showEnded();
-    }
+    } else if (d.type === 'rw:ended') { run = d.run; showEnded(); }
   });
 
-  /* -------------------------------------------------------------- intro -- */
-  ready(F.intro, function () {
-    // A click inside an iframe does not reach the host, so the listener has to
-    // live in the intro document itself.
-    doc(F.intro).addEventListener('pointerdown', play, { passive: true });
-    show('intro');
-  });
+  /* ------------------------------------------------------------- wiring -- */
+  function wireIntro() {
+    ready(F.intro, function () {
+      doc(F.intro).addEventListener('pointerdown', play, { passive: true });
+    });
+  }
 
-  /* ---------------------------------------------------- run-ended screen -- */
-  var TICK = 'assets/76e9a71ee3eac772562e5c50f1ca5f0392e539e9.svg';  // confirmed state
-  var nameInput = null, confirmed = false;
+  function wireEnded() {
+    ready(F.ended, function () {
+      var d = doc(F.ended), I = ids();
+      var label = node(F.ended, I.label), face = node(F.ended, I.face);
+      var content = d.querySelector('.content') || d.getElementById('screen');
+      if (!label || !face) return;
+      var at = localBox(face, content);
+      var PAD_L = at.width * 0.049, ARROW_W = at.width * 0.21, IN_H = at.height * 0.44;
+      nameInput = d.createElement('input');
+      nameInput.className = 'nameinput';
+      nameInput.maxLength = 14;
+      nameInput.placeholder = 'ENTER NAME';
+      nameInput.setAttribute('aria-label', 'Leaderboard name');
+      nameInput.style.left = (at.left + PAD_L) + 'px';
+      nameInput.style.top = (at.top + (at.height - IN_H) / 2) + 'px';
+      nameInput.style.width = (at.width - PAD_L - ARROW_W) + 'px';
+      nameInput.style.height = IN_H + 'px';
+      nameInput.style.fontSize = (at.height * 0.33) + 'px';
+      label.style.visibility = 'hidden';
+      content.appendChild(nameInput);
+      nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmName(); });
+      var btn = label.closest('[data-name="Button"]');
+      if (btn) btn.addEventListener('click', confirmName);
+      var again = node(F.ended, I.again);
+      if (again && again.closest('[data-name="Button"]'))
+        again.closest('[data-name="Button"]').addEventListener('click', function () { resetEnded(); play(); });
+    });
+  }
 
-  ready(F.ended, function () {
-    var d = doc(F.ended);
+  function wireBoard() {
+    ready(F.board, function () {
+      var a = node(F.board, ids().boardAgain);
+      if (a && a.closest('[data-name="Button"]'))
+        a.closest('[data-name="Button"]').addEventListener('click', function () { resetEnded(); play(); });
+    });
+  }
 
-    // The name field. Figma draws "ENTER NAME" as a static label; a real input
-    // is laid exactly over it so the caret, the phone keyboard and autofill all
-    // behave, while every pixel around it stays Figma's.
-    var label = node(F.ended, '636:2048');
-    // Sized to the FIELD (636:2047), not to the label: the label is a
-    // shrink-wrapped nowrap box only as wide as the words "ENTER NAME", so an
-    // input cut to it clips any longer name and sits off-centre.
-    //
-    // Measured with offsetLeft/offsetTop rather than getBoundingClientRect,
-    // and appended inside .content rather than next to it. .content carries a
-    // scale transform, so client rects are in post-transform pixels while the
-    // input must be placed in the same untransformed space as everything Figma
-    // drew. Offsets ignore transforms, which is exactly what is wanted.
-    var face = node(F.ended, '636:2047');
-    var content = d.querySelector('.content');
-    var at = offsetIn(face, content);
-    var PAD_L = 20, ARROW_W = 54, IN_H = 24;
-    nameInput = d.createElement('input');
-    nameInput.className = 'nameinput';
-    nameInput.maxLength = 14;
-    nameInput.placeholder = 'ENTER NAME';
-    nameInput.setAttribute('aria-label', 'Leaderboard name');
-    nameInput.style.left = (at.left + PAD_L) + 'px';
-    nameInput.style.top = (at.top + (face.offsetHeight - IN_H) / 2) + 'px';
-    nameInput.style.width = (face.offsetWidth - PAD_L - ARROW_W) + 'px';
-    nameInput.style.height = IN_H + 'px';
-    label.style.visibility = 'hidden';          // kept, so the grid still measures
-    content.appendChild(nameInput);
-    nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmName(); });
-
-    label.closest('[data-name="Button"]').addEventListener('click', confirmName);
-    node(F.ended, '636:2219').closest('[data-name="Button"]')
-      .addEventListener('click', function () { resetEnded(); play(); });
-  });
-
+  /* ----------------------------------------------------- run-ended screen -- */
   function showEnded() {
     resetEnded();
-    // 636:2040 holds the number and "PTS." as two spans; only the number moves.
-    var s = node(F.ended, '636:2040').querySelector('span');
+    var n = node(F.ended, ids().score), s = n && n.querySelector('span');
     if (s) s.textContent = run.score.toLocaleString() + ' ';
     show('ended');
-    // Only auto-focus where a keyboard is already there. On a touch device this
-    // would throw the keyboard up over the screen before the player has even
-    // read their score, and move PLAY AGAIN out from under their thumb.
-    if (!matchMedia('(pointer: coarse)').matches) {
+    // Only auto-focus where a keyboard is already present: on a touch device it
+    // throws the keyboard up before the score has been read.
+    if (!matchMedia('(pointer: coarse)').matches)
       setTimeout(function () { try { nameInput.focus(); } catch (e) {} }, 220);
-    }
   }
 
   function resetEnded() {
     confirmed = false;
     if (!nameInput) return;
-    nameInput.value = '';
-    nameInput.disabled = false;
-    var icon = node(F.ended, '636:2107').querySelector('img');
+    nameInput.value = ''; nameInput.disabled = false;
+    var icon = node(F.ended, ids().arrow);
+    icon = icon && icon.querySelector('img');
     if (icon && icon.dataset.arrow) icon.src = icon.dataset.arrow;
   }
 
@@ -189,72 +205,66 @@
     var handle = (nameInput.value || '').trim().toUpperCase();
     if (!handle) { nameInput.focus(); return; }
     confirmed = true;
-    nameInput.blur();          // close the keyboard before the screen changes
+    nameInput.blur();
     nameInput.disabled = true;
-
-    // swap the arrow for the tick — the 599:1046 frame, reached by changing the
-    // one asset that differs between the two states rather than a second page
-    var icon = node(F.ended, '636:2107').querySelector('img');
+    // Mobile swaps one asset for the tick. The desktop frames re-export every
+    // button piece between the two states, so there is no single swap to make —
+    // the confirmed state there is the name in white, without the tick yet.
+    var icon = node(F.ended, ids().arrow);
+    icon = icon && icon.querySelector('img');
     if (icon) { icon.dataset.arrow = icon.dataset.arrow || icon.getAttribute('src'); icon.src = TICK; }
-
-    entry = {
-      handle: handle, score: run.score, metres: run.metres, orbs: run.orbs,
-      seed: run.seed, tape: run.tape, at: run.at
-    };
+    entry = { handle: handle, score: run.score, metres: run.metres, orbs: run.orbs,
+              seed: run.seed, tape: run.tape, at: run.at };
     saveEntry(entry);
-    // let the confirmed state be seen — it is a designed frame, not a transition
     setTimeout(showBoard, 900);
   }
 
-  /* -------------------------------------------------- leaderboard screen -- */
-  // Top five rows, then the "your rank" row. Figma numbers them in tens.
-  var ROWS = [1335, 1345, 1355, 1365, 1375].map(function (b, i) {
-    return { btn: '599:' + (1332 + i * 10), score: '599:' + b, name: '599:' + (b + 1),
-             metres: '599:' + (b + 3), orbs: '599:' + (b + 4), rank: '599:' + (b + 5) };
-  });
-  var MINE = { btn: '599:1387', score: '599:1390', name: '599:1391',
-               metres: '599:1393', orbs: '599:1394', rank: '599:1395' };
-
-  ready(F.board, function () {
-    node(F.board, '599:1600').closest('[data-name="Button"]')
-      .addEventListener('click', function () { resetEnded(); play(); });
-  });
-
+  /* ------------------------------------------------------ leaderboard -- */
+  function rowSpec(i) {
+    var I = ids(), b = I.row0 + i * 10;
+    return { btn: '599:0', pfx: b, btnId: pfxId(I.rowBtn0 + i * 10) };
+  }
+  function pfxId(n) { return (mode === 'm' ? '599:' : '643:') + n; }
   function fillRow(spec, e, rank) {
-    var btn = node(F.board, spec.btn);
+    var btn = node(F.board, spec.btnId);
     if (!e) { if (btn) btn.style.visibility = 'hidden'; return; }
     if (btn) btn.style.visibility = 'visible';
-    setText(F.board, spec.rank, rank + '.');
-    setText(F.board, spec.name, e.handle);
-    setText(F.board, spec.score, e.score.toLocaleString());
-    setText(F.board, spec.metres, e.metres + ' M');
-    setText(F.board, spec.orbs, e.orbs + (e.orbs === 1 ? ' ORB' : ' ORBS'));
+    setText(F.board, pfxId(spec.pfx + 5), rank + '.');
+    setText(F.board, pfxId(spec.pfx + 1), e.handle);
+    setText(F.board, pfxId(spec.pfx), e.score.toLocaleString());
+    setText(F.board, pfxId(spec.pfx + 3), e.metres + ' M');
+    setText(F.board, pfxId(spec.pfx + 4), e.orbs + (e.orbs === 1 ? ' ORB' : ' ORBS'));
   }
-
-  // Identity by value, not by reference: loadBoard() re-parses from storage and
-  // hands back fresh objects, so indexOf(entry) is always -1 and the player is
-  // reported one place below the board no matter how well they did.
-  function indexOfEntry(list, e) {
-    if (!e) return -1;
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].at === e.at && list[i].handle === e.handle && list[i].score === e.score) return i;
-    }
-    return -1;
-  }
-
   function showBoard() {
-    var list = loadBoard();
-    for (var i = 0; i < ROWS.length; i++) fillRow(ROWS[i], list[i], i + 1);
-    var mine = indexOfEntry(list, entry);
-    if (entry && mine < 0) {
-      // did not make the stored board — still show the run, ranked past the end
-      fillRow(MINE, entry, list.length + 1);
-    } else {
-      fillRow(MINE, mine >= 0 ? list[mine] : null, mine + 1);
-    }
+    var I = ids(), list = loadBoard();
+    for (var i = 0; i < 5; i++) fillRow(rowSpec(i), list[i], i + 1);
+    var mineSpec = { pfx: I.mine.base, btnId: I.mine.btn };
+    var k = indexOfEntry(list, entry);
+    if (entry && k < 0) fillRow(mineSpec, entry, list.length + 1);
+    else fillRow(mineSpec, k >= 0 ? list[k] : null, k + 1);
     show('board');
   }
+
+  /* ------------------------------------------------------------- layout -- */
+  function apply(next) {
+    if (next === mode) return;
+    mode = next;
+    nameInput = null;
+    F.intro.src = SRC[mode].intro;
+    F.ended.src = SRC[mode].ended;
+    F.board.src = SRC[mode].board;
+    wireIntro(); wireEnded(); wireBoard();
+    if (current === 'ended' && run) ready(F.ended, showEnded);
+    else if (current === 'board') ready(F.board, showBoard);
+    else if (current !== 'game') ready(F.intro, function () { show('intro'); });
+  }
+  function check() { apply((innerWidth / innerHeight) < CUT ? 'm' : 'd'); }
+  addEventListener('resize', check);
+  addEventListener('orientationchange', check);
+  if (window.ResizeObserver) new ResizeObserver(check).observe(document.documentElement);
+  check();
 })();
+
 </script>
 </body>
 </html>

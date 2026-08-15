@@ -19,7 +19,16 @@
   .play span { display:block; margin-top:5px; color:#8fa3c8; font-size:13px; }
   .warn { margin-top:16px; padding:11px 14px; border-left:3px solid #d8a13a;
           background:#1b1a12; color:#e5cf9a; max-width:78ch; }
-  .sheet { display:flex; gap:22px; margin-top:26px; flex-wrap:wrap; align-items:flex-start; }
+  .dframe { width:640px; height:360px; border:1px solid #24304a; border-radius:10px; overflow:hidden; background:#000; }
+  .dframe iframe { width:1920px; height:1080px; border:0; display:block; transform:scale(.3333); transform-origin:top left; }
+  figure.d { width:640px; }
+  h2 { font-size:15px; margin-top:34px; color:#9db4dc; font-weight:700; }
+  .sheet { display:flex; gap:22px; margin-top:18px; flex-wrap:wrap; align-items:flex-start; }
+  h2 { font-size:15px; margin-top:34px; color:#9db4dc; font-weight:700; }
+  .dframe { width:640px; height:360px; border:1px solid #24304a; border-radius:10px; overflow:hidden; background:#000; }
+  .dframe iframe { width:1920px; height:1080px; border:0; display:block;
+                   transform:scale(.3333); transform-origin:top left; }
+  figure.d { width:640px; }
   figure { width:393px; }
   .frame { width:393px; height:852px; border:1px solid #24304a; border-radius:10px;
            overflow:hidden; background:#000; }
@@ -36,9 +45,8 @@
 <body>
 <h1>Novo Health Hero — mobile flow</h1>
 <p class="sub">
-  Transcribed from Figma <code>dslSxHnOVTUVeQete9oLGh</code>, section “Final Design”.
-  Each frame is an iPhone 16 at 393&times;852, built at true size and scaled to the
-  viewport width. The number under each screen is the mean per-channel difference
+  Transcribed from Figma — mobile from <code>dslSxHnOVTUVeQete9oLGh</code> / <code>NmH0OD7n5UOdhIeTKCcgUk</code>, section “Final Design”.
+  Frames are built at true size and fitted to the viewport. The number under each screen is the mean per-channel difference
   (0&ndash;255) against Figma’s own render of that node.
 </p>
 <p class="play">
@@ -74,6 +82,16 @@
     <div class="frame"><iframe src="leaderboard.html" title="Leaderboard"></iframe></div>
     <figcaption><b>4 · Leaderboard</b><span>Δ 13.09 · 599:1281</span></figcaption>
   </figure>
+</div>
+
+<h2>Desktop — 1920 × 1080 &nbsp;(two columns: scene left, panel right)</h2>
+<div class="sheet">
+  <figure class="d"><div class="dframe"><iframe src="d-intro.html" title="Desktop intro"></iframe></div>
+    <figcaption><b>Intro</b><span>Δ 1.89 · 643:3825</span></figcaption></figure>
+  <figure class="d"><div class="dframe"><iframe src="d-run-ended.html" title="Desktop run ended"></iframe></div>
+    <figcaption><b>Run ended</b><span>Δ 5.57 · 643:3912</span></figcaption></figure>
+  <figure class="d"><div class="dframe"><iframe src="d-leaderboard.html" title="Desktop leaderboard"></iframe></div>
+    <figcaption><b>Leaderboard</b><span>Δ 5.19 · 643:4468</span></figcaption></figure>
 </div>
 
 <p class="sub" style="margin-top:30px">
