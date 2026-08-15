@@ -21,6 +21,43 @@
   var screenEl = document.getElementById('screen');
   if (!screenEl) return;
 
+  /* The three outbound links.
+
+     Figma draws these as plain text, so they are wired here by their label
+     rather than by node id — the ids differ between the mobile and desktop
+     frames and change whenever a screen is re-exported, the label does not.
+
+     Each one climbs to the largest ancestor that still contains only that
+     label, so the whole target is clickable: the arrow travels with "Learn
+     More", and "LEARN MORE" picks up its entire pixel-art button rather than
+     just the word. The wrapper is display:contents so the layout is untouched.
+
+     target=_blank keeps the run alive behind them, and rel=noopener is
+     mandatory with it — without it the opened page can reach back through
+     window.opener. */
+  var LINKS = [
+    ['click here', 'https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html'],
+    ['learn more', 'https://www.ueber-gewicht.de/']
+  ];
+  function wireLinks() {
+    var norm = function (s) { return (s || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/\.$/, ''); };
+    LINKS.forEach(function (pair) {
+      var label = pair[0], href = pair[1];
+      [].forEach.call(document.querySelectorAll('p, span'), function (el) {
+        if (norm(el.textContent) !== label || el.closest('a')) return;
+        var t = el;
+        while (t.parentElement && t.parentElement !== document.body &&
+               norm(t.parentElement.textContent) === label) t = t.parentElement;
+        var a = document.createElement('a');
+        a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.style.cssText = 'display:contents;cursor:pointer;color:inherit;text-decoration:inherit';
+        t.parentElement.insertBefore(a, t);
+        a.appendChild(t);
+      });
+    });
+  }
+  wireLinks();
+
   /* Give mixed-size lines something real to trim against.
 
      Figma writes them as a font-size:0 wrapper with sized spans inside —
