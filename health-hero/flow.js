@@ -21,6 +21,24 @@
   var screenEl = document.getElementById('screen');
   if (!screenEl) return;
 
+  /* Give mixed-size lines something real to trim against.
+
+     Figma writes them as a font-size:0 wrapper with sized spans inside —
+     "2050" at 20px beside "PTS." at 14px. text-box-trim then measures cap
+     height against a ZERO-size font, the box collapses, and the number rides
+     8px above "Your Score:" instead of sharing its baseline.
+
+     Setting the <p> to its largest span's size changes nothing visually — every
+     glyph is inside a span with its own size — but it gives the line box a real
+     strut, so the trim lands where Figma's does. */
+  document.querySelectorAll('[style*="font-size:0px"] > p').forEach(function (p) {
+    var max = 0;
+    p.querySelectorAll('span').forEach(function (s) {
+      max = Math.max(max, parseFloat(getComputedStyle(s).fontSize) || 0);
+    });
+    if (max) p.style.fontSize = max + 'px';
+  });
+
   /* Desktop two-column mode. See the note in flow.css for why. Structure:
 
        .scene-wrap > .scene-box > [Figma scene, at its own offsets]
