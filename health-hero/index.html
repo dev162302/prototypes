@@ -64,6 +64,7 @@
   var F = { intro: document.getElementById('f-intro'), game: document.getElementById('f-game'),
             ended: document.getElementById('f-ended'), board: document.getElementById('f-board') };
   var mode = null, current = null, run = null, entry = null, nameInput = null, confirmed = false;
+  var placeInput = function () {};
   var ids = function () { return IDS[mode]; };
 
   /* ---------------------------------------------------------------- board -- */
@@ -148,20 +149,30 @@
       var label = node(F.ended, I.label), face = node(F.ended, I.face);
       var content = d.querySelector('.content') || d.getElementById('screen');
       if (!label || !face) return;
-      var at = localBox(face, content);
-      var PAD_L = at.width * 0.049, ARROW_W = at.width * 0.21, IN_H = at.height * 0.44;
       nameInput = d.createElement('input');
       nameInput.className = 'nameinput';
       nameInput.maxLength = 14;
       nameInput.placeholder = 'ENTER NAME';
       nameInput.setAttribute('aria-label', 'Leaderboard name');
-      nameInput.style.left = (at.left + PAD_L) + 'px';
-      nameInput.style.top = (at.top + (at.height - IN_H) / 2) + 'px';
-      nameInput.style.width = (at.width - PAD_L - ARROW_W) + 'px';
-      nameInput.style.height = IN_H + 'px';
-      nameInput.style.fontSize = (at.height * 0.33) + 'px';
-      label.style.visibility = 'hidden';
+      label.style.visibility = 'hidden';       // kept, so the grid still measures
       content.appendChild(nameInput);
+
+      /* Placed every time the screen is shown, not once when it loads.
+         Measuring at wire time raced the iframe's own layout: over the network
+         the field was still 0x0, so the input came out 0x0 in the top-left
+         corner. It also has to be re-placed on resize, because the desktop
+         columns rescale underneath it. */
+      placeInput = function () {
+        var at = localBox(face, content);
+        if (!at.width) { requestAnimationFrame(placeInput); return; }
+        var PAD_L = at.width * 0.049, ARROW_W = at.width * 0.21, IN_H = at.height * 0.44;
+        nameInput.style.left = (at.left + PAD_L) + 'px';
+        nameInput.style.top = (at.top + (at.height - IN_H) / 2) + 'px';
+        nameInput.style.width = (at.width - PAD_L - ARROW_W) + 'px';
+        nameInput.style.height = IN_H + 'px';
+        nameInput.style.fontSize = (at.height * 0.33) + 'px';
+      };
+      placeInput();
       nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmName(); });
       var btn = label.closest('[data-name="Button"]');
       if (btn) btn.addEventListener('click', confirmName);
@@ -182,6 +193,7 @@
   /* ----------------------------------------------------- run-ended screen -- */
   function showEnded() {
     resetEnded();
+    placeInput();
     var n = node(F.ended, ids().score), s = n && n.querySelector('span');
     if (s) s.textContent = run.score.toLocaleString() + ' ';
     show('ended');
@@ -258,7 +270,10 @@
     else if (current === 'board') ready(F.board, showBoard);
     else if (current !== 'game') ready(F.intro, function () { show('intro'); });
   }
-  function check() { apply((innerWidth / innerHeight) < CUT ? 'm' : 'd'); }
+  function check() {
+    apply((innerWidth / innerHeight) < CUT ? 'm' : 'd');
+    placeInput();                     // the columns rescale under the field
+  }
   addEventListener('resize', check);
   addEventListener('orientationchange', check);
   if (window.ResizeObserver) new ResizeObserver(check).observe(document.documentElement);
