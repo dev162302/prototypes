@@ -1,0 +1,79 @@
+/* Shared shell for the mobile game-flow screens.
+   Every frame is an iPhone 16 at 393 x 852, transcribed at true size and scaled
+   to fit — the same approach as the landing page, so the two stay comparable. */
+:root {
+  /* Ari W9500 and Apis are Novo Nordisk's licensed brand faces and are NOT
+     installed. They are named first in every rule the compiler emits, so the
+     real thing is picked up the moment the woff2 files land. Until then this is
+     the closest humanist grotesque the OS ships, and the type will NOT match:
+     Ari is wider and rounder, so expect lines to reflow when it arrives. */
+  --fallback: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --pad: #011864;          /* the field around the screen; per-page override */
+  --w: 393px;
+  --h: 852px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; background: var(--pad); }
+img { display: block; }
+
+#fit { position: fixed; inset: 0; }
+
+/* TWO SCALES, because one cannot satisfy both halves of the frame.
+
+   The Figma frames are 393x852. A phone browser gives roughly 393x660 once the
+   address bar and toolbar are counted, and every device's leftover is a
+   different shape. Scale the whole frame by width and the footer falls off the
+   bottom; scale it to fit and you get bars down the sides. Neither is "the
+   same on all screens".
+
+   So the frame is split: the BACKGROUND scales to COVER the viewport, and the
+   CONTENT scales to CONTAIN it. The artwork therefore reaches every edge of
+   every device, and not one pixel of content is ever cut. What varies between a
+   short phone and a tall one is how large the content sits on that background —
+   which is the only thing that can vary once nothing is allowed to be cropped.
+
+   .content is counter-scaled: it sits inside the already-covered frame, so it
+   is given C/F and the two multiply out to exactly C. */
+.screen {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--w); height: var(--h);
+  transform-origin: center center;
+}
+.screen .content {
+  position: absolute; inset: 0;
+  transform-origin: center center;
+}
+
+/* Pixel art must stay pixel art when the stage is scaled up on a big phone.
+   Without this the bevels resample to mush at any non-integer scale. */
+.screen img[src$=".svg"] { image-rendering: auto; }
+.pixelated { image-rendering: pixelated; }
+
+/* Interactive bits layered over the transcription. Everything Figma drew is
+   left untouched; these only add behaviour. */
+.hit { position: absolute; cursor: pointer; background: none; border: 0;
+       padding: 0; font: inherit; color: inherit; }
+.hit:focus-visible { outline: 2px solid #7fd4ff; outline-offset: 2px; }
+
+/* The name field: a real <input> laid over Figma's ENTER NAME label, so the
+   caret, the phone keyboard and autofill all behave while the art stays Figma's.
+
+   Colours sampled from Figma's own render of the two states rather than read off
+   the export, because the export's colour tokens belong to different elements:
+   the field face is dark navy (25,48,116) in BOTH states, the placeholder is
+   #6874a4, and a typed name is pure WHITE (599:1046). It was set to #011864 —
+   the PLAY AGAIN label's colour — which is dark text on a dark field.
+
+   appearance/color-scheme are pinned because the field art is dark by design:
+   left on auto, a browser in dark mode paints its own control background over
+   the artwork. */
+.nameinput {
+  position: absolute; border: 0; background: transparent; outline: 0;
+  -webkit-appearance: none; appearance: none; color-scheme: light;
+  font-family: 'Ari-W9500', var(--fallback); font-weight: 700;
+  text-align: left; text-transform: uppercase; color: #fff;
+  letter-spacing: -0.3624px; font-size: 18.119px;
+}
+.nameinput::placeholder { color: #6874a4; opacity: 1; }
+.nameinput:-webkit-autofill { -webkit-text-fill-color: #fff;
+  transition: background-color 600000s 0s; }

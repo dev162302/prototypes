@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Novo Health Hero — mobile flow (review)</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root { color-scheme: dark; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0d1526; color:#e8eefc; font:14px/1.5 "Helvetica Neue",Helvetica,Arial,sans-serif;
+         padding:28px 24px 60px; }
+  h1 { font-size:19px; font-weight:700; letter-spacing:.2px; }
+  .sub { color:#8fa3c8; margin-top:6px; max-width:78ch; }
+  .play { margin-top:18px; padding:13px 16px; border-left:3px solid #3ba9d8;
+          background:#0f2130; max-width:78ch; }
+  .play a { font-size:16px; text-decoration:none; }
+  .play a:hover { text-decoration:underline; }
+  .play span { display:block; margin-top:5px; color:#8fa3c8; font-size:13px; }
+  .warn { margin-top:16px; padding:11px 14px; border-left:3px solid #d8a13a;
+          background:#1b1a12; color:#e5cf9a; max-width:78ch; }
+  .sheet { display:flex; gap:22px; margin-top:26px; flex-wrap:wrap; align-items:flex-start; }
+  figure { width:393px; }
+  .frame { width:393px; height:852px; border:1px solid #24304a; border-radius:10px;
+           overflow:hidden; background:#000; }
+  iframe { width:393px; height:852px; border:0; display:block; }
+  figcaption { margin-top:9px; display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  figcaption b { font-weight:700; }
+  figcaption span { color:#7d8fb3; font-size:12px; font-variant-numeric:tabular-nums; }
+  a { color:#7fd4ff; }
+  .gap { width:393px; height:852px; border:1px dashed #2c3a58; border-radius:10px;
+         display:flex; align-items:center; justify-content:center; text-align:center;
+         color:#5f7099; padding:24px; }
+</style>
+</head>
+<body>
+<h1>Novo Health Hero — mobile flow</h1>
+<p class="sub">
+  Transcribed from Figma <code>dslSxHnOVTUVeQete9oLGh</code>, section “Final Design”.
+  Each frame is an iPhone 16 at 393&times;852, built at true size and scaled to the
+  viewport width. The number under each screen is the mean per-channel difference
+  (0&ndash;255) against Figma’s own render of that node.
+</p>
+<p class="play">
+  <a href="index.html"><b>▶ Play the flow</b></a>
+  <span>intro → game → run ended → name → leaderboard → play again. Best opened on a phone,
+  or narrow the window. Tap to jump; tap twice for a double jump.</span>
+</p>
+<p class="warn">
+  <b>Type is a placeholder.</b> These screens are set in <b>Ari W9500</b> and <b>Apis</b> —
+  both licensed Novo Nordisk faces, neither installed here. Everything falls back to
+  Helvetica, which is why the wording wraps differently and why the numbers below are
+  not lower. All remaining difference is glyphs; the artwork itself matches.
+</p>
+
+<div class="sheet">
+  <figure>
+    <div class="frame"><iframe src="intro.html" title="Intro"></iframe></div>
+    <figcaption><b>1 · Intro</b><span>Δ 2.56 · 599:719</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame"><iframe src="game/index.html" title="Game"></iframe></div>
+    <figcaption><b>2 · Game</b><span>existing build</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame"><iframe src="run-ended.html" title="Run ended"></iframe></div>
+    <figcaption><b>3 · Run ended</b><span>Δ 10.14 · 599:811</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame"><iframe src="run-ended-named.html" title="Run ended, name entered"></iframe></div>
+    <figcaption><b>4 · Run ended · named</b><span>Δ 10.53 · 599:1046</span></figcaption>
+  </figure>
+
+  <figure>
+    <div class="frame"><iframe src="leaderboard.html" title="Leaderboard"></iframe></div>
+    <figcaption><b>5 · Leaderboard</b><span>Δ 13.09 · 599:1281</span></figcaption>
+  </figure>
+</div>
+
+<p class="sub" style="margin-top:30px">
+  Screens 3 and 4 are the same screen in two states — empty field, then a confirmed
+  name. They are separate files here so each can be checked against Figma on its own;
+  they collapse into one page with the name field wired up once the game can report a
+  score. Open any screen on its own:
+  <a href="intro.html">intro</a> ·
+  <a href="run-ended.html">run-ended</a> ·
+  <a href="run-ended-named.html">run-ended-named</a> ·
+  <a href="leaderboard.html">leaderboard</a>
+</p>
+</body>
+</html>

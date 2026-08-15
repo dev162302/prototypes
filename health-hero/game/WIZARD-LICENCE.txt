@@ -1,0 +1,56 @@
+CHARACTER ART — PROVENANCE AND LICENCE
+======================================
+
+Asset      "wizard character (animated)"
+Author     ruberboy
+Source     https://opengameart.org/content/wizard-characteranimated
+File       magician_v1.0.zip (19.5 MB)
+Retrieved  5 August 2026
+Licence    CC0 1.0 Universal (Creative Commons Zero, public domain dedication)
+
+WHAT CC0 GRANTS
+---------------
+  - commercial use: yes
+  - modification / recolouring: yes
+  - redistribution as part of a larger work: yes
+  - attribution: NOT required
+  - share-alike / copyleft: none
+
+The author's own note on the submission page: "This character was on sale, but
+after a long time I decided to share it for free." No attribution notice and no
+derived-work claim are recorded on the page.
+
+Credit is not required. It is recorded here anyway, because on client work the
+paper trail is the point.
+
+WHAT CC0 DOES NOT GIVE YOU
+--------------------------
+CC0 is a dedication made by the uploader, not a warranty. It is only valid if
+the uploader actually held the rights, and OpenGameArt does not verify that.
+There is no indemnity behind it — unlike a paid stock licence, nobody carries
+the risk for you if the provenance turns out to be wrong.
+
+Nothing here suggests a problem with this particular asset. But for a public
+campaign for a pharmaceutical client, "probably fine, no warranty" is a
+decision for the client's legal team to take knowingly, not one to inherit by
+default. Declare it.
+
+WHAT IS ACTUALLY IN THE PACK
+----------------------------
+156 PNG (frame sequences: run, walk, idle, attack, damage, die)
+  1 PSD, 1 XCF  (layered sources — this is what makes recolouring to the
+                 brand blues straightforward)
+  1 .dbproj + 2 .json  (DragonBones skeletal animation project)
+No third-party files, no bundled fonts, no other licences inside the archive.
+
+WHAT SHIPS IN THIS BUILD
+------------------------
+public/wizard-run.png — a sprite sheet built from 12 of the pack's 25 run
+frames, trimmed to a single shared bounding box so the figure does not jitter,
+each frame bottom-centred so the feet sit on a consistent line.
+
+STILL OUTSTANDING ELSEWHERE IN THIS PROJECT
+-------------------------------------------
+  - Apis (brand typeface) is licensed; the build currently falls back to a
+    system font stack.
+  - Official Novo Nordisk logo assets and exact brand blues are placeholders.
