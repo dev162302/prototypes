@@ -1,3 +1,20 @@
+/* The campaign's own faces, supplied by the designer as TTF and converted to
+   woff2 here (97KB for all four, ~80% smaller than the TTFs). The family names
+   match what Figma writes into the markup — "Ari-W9500" and "Apis" — so no rule
+   had to change: the stacks already named them first and simply fell back to
+   Helvetica until these existed.
+
+   font-display:swap so text is never invisible while they load; on a QR-scanned
+   phone a blank screen reads as a broken page. */
+@font-face { font-family: 'Ari-W9500'; font-style: normal; font-weight: 400;
+             src: url(fonts/ari-w9500-regular.woff2) format('woff2'); font-display: swap; }
+@font-face { font-family: 'Ari-W9500'; font-style: normal; font-weight: 700;
+             src: url(fonts/ari-w9500-bold.woff2) format('woff2'); font-display: swap; }
+@font-face { font-family: 'Apis'; font-style: normal; font-weight: 400;
+             src: url(fonts/apis-regular.woff2) format('woff2'); font-display: swap; }
+@font-face { font-family: 'Apis'; font-style: normal; font-weight: 700;
+             src: url(fonts/apis-bold.woff2) format('woff2'); font-display: swap; }
+
 /* Shared shell for the mobile game-flow screens.
    Every frame is an iPhone 16 at 393 x 852, transcribed at true size and scaled
    to fit — the same approach as the landing page, so the two stay comparable. */
@@ -137,3 +154,22 @@ body.desk .panel-in  { position: absolute; left: 0; top: 0; width: 824px;  heigh
    on the column. */
 body.desk .left-in   { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px;
                        transform-origin: 0 0; }
+
+/* text-box-trim has to reach the line box, not just the wrapper.
+
+   Figma sets text-box-trim:trim-both / text-box-edge:cap alphabetic on the
+   flex wrapper, but the text sits in a <p> inside it and the property is not
+   inherited — so nothing was trimmed and every label kept its full leading.
+   "Run Ended" measured 20px against Figma's 16, and with a flex gap under each
+   one that 4px compounded: the column drifted 8px low by the leaderboard and
+   stayed there.
+
+   It only became visible once the real fonts arrived, because Helvetica's
+   metrics happened to sit closer to the trimmed height than Ari's do.
+
+   inherit is deliberate: it takes the wrapper's computed value, so this only
+   affects elements where Figma actually asked for trimming. */
+[style*="text-box-trim"] > p {
+  text-box-trim: inherit;
+  text-box-edge: inherit;
+}
