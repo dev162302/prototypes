@@ -120,7 +120,7 @@
   });
 
   /* ---------------------------------------------------- run-ended screen -- */
-  var TICK = 'assets/76e9a71ee3eac772562e5c50f1ca5f0392e539e9.svg';  // the 599:1046 state
+  var TICK = 'assets/76e9a71ee3eac772562e5c50f1ca5f0392e539e9.svg';  // confirmed state
   var nameInput = null, confirmed = false;
 
   ready(F.ended, function () {
@@ -129,8 +129,8 @@
     // The name field. Figma draws "ENTER NAME" as a static label; a real input
     // is laid exactly over it so the caret, the phone keyboard and autofill all
     // behave, while every pixel around it stays Figma's.
-    var label = node(F.ended, '599:862');
-    // Sized to the FIELD (599:861), not to the label: the label is a
+    var label = node(F.ended, '636:2048');
+    // Sized to the FIELD (636:2047), not to the label: the label is a
     // shrink-wrapped nowrap box only as wide as the words "ENTER NAME", so an
     // input cut to it clips any longer name and sits off-centre.
     //
@@ -139,7 +139,7 @@
     // scale transform, so client rects are in post-transform pixels while the
     // input must be placed in the same untransformed space as everything Figma
     // drew. Offsets ignore transforms, which is exactly what is wanted.
-    var face = node(F.ended, '599:861');
+    var face = node(F.ended, '636:2047');
     var content = d.querySelector('.content');
     var at = offsetIn(face, content);
     var PAD_L = 20, ARROW_W = 54, IN_H = 24;
@@ -157,14 +157,14 @@
     nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmName(); });
 
     label.closest('[data-name="Button"]').addEventListener('click', confirmName);
-    node(F.ended, '599:1033').closest('[data-name="Button"]')
+    node(F.ended, '636:2219').closest('[data-name="Button"]')
       .addEventListener('click', function () { resetEnded(); play(); });
   });
 
   function showEnded() {
     resetEnded();
-    // 599:1044 holds the number and "PTS." as two spans; only the number moves.
-    var s = node(F.ended, '599:1044').querySelector('span');
+    // 636:2040 holds the number and "PTS." as two spans; only the number moves.
+    var s = node(F.ended, '636:2040').querySelector('span');
     if (s) s.textContent = run.score.toLocaleString() + ' ';
     show('ended');
     // Only auto-focus where a keyboard is already there. On a touch device this
@@ -180,7 +180,7 @@
     if (!nameInput) return;
     nameInput.value = '';
     nameInput.disabled = false;
-    var icon = node(F.ended, '599:921').querySelector('img');
+    var icon = node(F.ended, '636:2107').querySelector('img');
     if (icon && icon.dataset.arrow) icon.src = icon.dataset.arrow;
   }
 
@@ -194,7 +194,7 @@
 
     // swap the arrow for the tick — the 599:1046 frame, reached by changing the
     // one asset that differs between the two states rather than a second page
-    var icon = node(F.ended, '599:921').querySelector('img');
+    var icon = node(F.ended, '636:2107').querySelector('img');
     if (icon) { icon.dataset.arrow = icon.dataset.arrow || icon.getAttribute('src'); icon.src = TICK; }
 
     entry = {
