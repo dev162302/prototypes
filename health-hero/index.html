@@ -192,6 +192,70 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     }).catch(dismiss);
   }
 
+  /* Hand the orb over to the home screen.
+
+     The two never agree on their own, because they are sized by different
+     rules: the film is 402x874 and fit:'contain' binds it to viewport HEIGHT,
+     while the home screen's orb scales with the desktop layout's
+     min(vw/1920, vh/1080). Measured before this went in — splash orb against
+     home orb, same viewport:
+
+       1600x1000   51px apart, sizes matched
+       1920x1080   60px apart, and 16% different in size
+       1440x900    45px apart
+
+     So instead of jumping, the splash CARRIES its orb onto the home one during
+     the fade. That is only safe because of what the last frame contains: at
+     the final frame the only non-background pixels sit between y=400 and y=590
+     — the orb and nothing else, on flat navy. Moving and scaling the canvas at
+     that moment has nothing else to betray it.
+
+     Desktop only, as asked. Portrait fails differently — there the positions
+     nearly agree (8px) and it is the SIZE that is out — so it needs its own
+     answer rather than this one applied blind. */
+
+  // The orb's centre and radius in FILM coordinates. Measured off the rendered
+  // film at three viewports and cross-checked: this predicts the on-screen y
+  // within 1px at 1440x900, 1600x1000 and 1920x1080. Re-measure if the film is
+  // ever re-exported.
+  var FILM = { w: 402, h: 874, cx: 203.6, cy: 430.9, r: 84.5 };
+  /* The home loop draws its orb at this fraction of its canvas — the same
+     number flow.js uses to size that canvas in the first place. */
+  var HOME_ORB_FRAC = 0.398;
+
+  function handOff() {
+    try {
+      var CUT = Math.sqrt((1920 / 1080) * (393 / 852));
+      if (innerWidth / innerHeight < CUT) return;          // portrait: not this fix
+      var f = document.getElementById('f-intro');
+      var d = f && (f.contentDocument || null);
+      var host = d && d.querySelector('canvas.orb-loop');
+      if (!host) return;                                    // no loop, nothing to meet
+      var hr = host.getBoundingClientRect();
+      if (!hr.width) return;
+
+      // where the film's orb is on screen right now, from the contain fit
+      var k = Math.min(innerWidth / FILM.w, innerHeight / FILM.h);
+      var sx = (innerWidth - FILM.w * k) / 2 + FILM.cx * k;
+      var sy = (innerHeight - FILM.h * k) / 2 + FILM.cy * k;
+      var sr = FILM.r * k;
+
+      var hx = hr.left + hr.width / 2;
+      var hy = hr.top + hr.height / 2;
+      var hrad = hr.width * HOME_ORB_FRAC / 2;
+      if (!(sr > 0 && hrad > 0)) return;
+
+      canvas.style.transformOrigin = sx + 'px ' + sy + 'px';
+      canvas.style.transition = 'transform ' + FADE_MS + 'ms ease-out';
+      canvas.style.transform =
+        'translate(' + (hx - sx).toFixed(1) + 'px,' + (hy - sy).toFixed(1) + 'px)' +
+        ' scale(' + (hrad / sr).toFixed(4) + ')';
+    } catch (e) {
+      /* cross-document access or a missing loop: the splash simply fades as
+         it always did, which is the behaviour this replaces */
+    }
+  }
+
   function start(DotLottie, buf) {
     player = new DotLottie({
       canvas: canvas,
@@ -210,7 +274,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     });
 
     // the film runs to its own end; nothing cuts it short
-    player.addEventListener('complete', function () { dismiss(FADE_MS); });
+    player.addEventListener('complete', function () { handOff(); dismiss(FADE_MS); });
     player.addEventListener('loadError', dismiss);
   }
 

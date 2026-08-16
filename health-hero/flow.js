@@ -140,6 +140,8 @@
     var size = parseFloat(o.width) / 0.398;
 
     var cv = document.createElement('canvas');
+    // named so the splash can find it to hand its orb over — see play.html
+    cv.className = 'orb-loop';
     cv.style.cssText =
       'position:absolute;pointer-events:none;left:' + (cx - size / 2) + 'px;top:' +
       (cy - size / 2) + 'px;width:' + size + 'px;height:' + size + 'px';
