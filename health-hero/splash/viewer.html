@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lottie viewer — Novo Health Hero</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0e1430;color:#e8edf9;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+       min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:14px 14px 28px}
+  h1{font-size:15px;font-weight:600;letter-spacing:.02em;margin-bottom:2px}
+  .sub{font-size:12px;color:#8fa2c9;margin-bottom:12px;text-align:center}
+  #drop{border:1.5px dashed #38477a;border-radius:10px;padding:8px 14px;font-size:12px;color:#8fa2c9;
+        margin-bottom:12px;cursor:pointer;text-align:center;transition:.15s}
+  #drop:hover,#drop.over{border-color:#6f8ad4;color:#cfdaf5;background:#161e42}
+  /* bounded by HEIGHT, not width: the comp is 402x874, so sizing by width
+     pushed the scrubber below the fold on a phone — which is where this is
+     most likely to be opened. */
+  #stage{background:#202664;border-radius:10px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.45);
+         height:min(48vh,460px);aspect-ratio:402/874;position:relative}
+  canvas{width:100%;height:100%;display:block}
+  #meta{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px;font-size:12px;color:#8fa2c9}
+  #meta b{color:#e8edf9;font-weight:600;font-variant-numeric:tabular-nums}
+  #controls{width:min(340px,86vw);margin-top:6px}
+  #scrub{width:100%;accent-color:#6f8ad4}
+  .row{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;flex-wrap:wrap}
+  button{background:#243059;color:#e8edf9;border:0;border-radius:7px;padding:8px 14px;font-size:13px;cursor:pointer}
+  button:hover{background:#2f3d6f}
+  button.on{background:#6f8ad4;color:#0e1430;font-weight:600}
+  #read{text-align:center;margin-top:8px;font-size:13px;font-variant-numeric:tabular-nums}
+  #read span{color:#8fa2c9}
+  .note{max-width:340px;font-size:11px;color:#6d7fa8;margin-top:16px;text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>Lottie viewer</h1>
+<div class="sub">Scrub frame by frame. Times are shown at the file's own frame rate.</div>
+
+<div id="drop">Drop a <b>.lottie</b> or <b>.json</b> here — or tap to choose
+  <input id="file" type="file" accept=".lottie,.json" hidden></div>
+
+<div id="stage"><canvas id="c"></canvas></div>
+
+<div id="meta">
+  <div>frames <b id="m-frames">–</b></div>
+  <div>fps <b id="m-fps">–</b></div>
+  <div>duration <b id="m-dur">–</b></div>
+</div>
+
+<div id="controls">
+  <input id="scrub" type="range" min="0" max="100" step="1" value="0">
+  <div id="read">frame <b id="r-frame">0</b> <span>/</span> <b id="r-total">0</b>
+    &nbsp;·&nbsp; <b id="r-time">0.000</b><span>s</span></div>
+  <div class="row">
+    <button id="play">Play</button>
+    <button data-speed="0.25">0.25×</button>
+    <button data-speed="0.5">0.5×</button>
+    <button data-speed="1" class="on">1×</button>
+    <button id="bg">Dark bg</button>
+  </div>
+</div>
+
+<div class="note">Loaded by default: the splash this site actually ships.
+  Drop the designer's file on top to compare them.</div>
+
+<script type="module">
+import { DotLottie } from './dotlottie.js';
+DotLottie.setWasmUrl('dotlottie-player.wasm');
+
+const canvas = document.getElementById('c');
+const $ = (id) => document.getElementById(id);
+let player = null, total = 0, fps = 24, playing = false, speed = 1;
+
+function fmt(n, d = 3) { return Number(n).toFixed(d); }
+
+function load(data) {
+  if (player) { try { player.destroy(); } catch (e) {} }
+  playing = false; $('play').textContent = 'Play';
+  player = new DotLottie({
+    canvas, data, autoplay: false, loop: false, speed,
+    layout: { fit: 'contain', align: [0.5, 0.5] },
+    renderConfig: { devicePixelRatio: Math.min(devicePixelRatio || 1, 2) }
+  });
+  player.addEventListener('load', () => {
+    total = player.totalFrames || 0;
+    fps = player.duration ? total / player.duration : 24;
+    $('m-frames').textContent = Math.round(total);
+    $('m-fps').textContent = Math.round(fps);
+    $('m-dur').textContent = fmt(player.duration ?? total / fps) + ' s';
+    $('r-total').textContent = Math.round(total);
+    $('scrub').max = String(Math.max(0, Math.round(total)));
+    setFrame(0);
+  });
+  player.addEventListener('loadError', () => alert('Could not read that file.'));
+  // keep the scrubber in step while it plays
+  player.addEventListener('frame', (e) => {
+    $('scrub').value = String(Math.round(e.currentFrame));
+    readout(e.currentFrame);
+  });
+  player.addEventListener('complete', () => { playing = false; $('play').textContent = 'Play'; });
+}
+
+function readout(f) {
+  $('r-frame').textContent = Math.round(f);
+  $('r-time').textContent = fmt(f / (fps || 24));
+}
+function setFrame(f) { if (player) { player.setFrame(f); readout(f); } }
+
+$('scrub').addEventListener('input', (e) => {
+  if (playing) { player.pause(); playing = false; $('play').textContent = 'Play'; }
+  setFrame(+e.target.value);
+});
+$('play').addEventListener('click', () => {
+  if (!player) return;
+  playing = !playing;
+  $('play').textContent = playing ? 'Pause' : 'Play';
+  if (playing) { if (Math.round(+$('scrub').value) >= Math.round(total)) player.setFrame(0); player.play(); }
+  else player.pause();
+});
+document.querySelectorAll('[data-speed]').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-speed]').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    speed = +b.dataset.speed;
+    if (player) player.setSpeed(speed);
+  });
+});
+let dark = false;
+$('bg').addEventListener('click', () => {
+  dark = !dark;
+  document.getElementById('stage').style.background = dark ? '#000' : '#202664';
+  $('bg').textContent = dark ? 'Navy bg' : 'Dark bg';
+});
+
+/* Drop / pick a file. .lottie arrives as an ArrayBuffer, .json as text —
+   the player accepts either, so no unpacking is needed here. */
+const drop = $('drop'), file = $('file');
+drop.addEventListener('click', () => file.click());
+file.addEventListener('change', () => file.files[0] && read(file.files[0]));
+['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => {
+  e.preventDefault(); drop.classList.add('over');
+}));
+['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, () => drop.classList.remove('over')));
+drop.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) read(f); });
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) read(f); });
+
+function read(f) {
+  const r = new FileReader();
+  r.onload = () => {
+    drop.innerHTML = 'Loaded: <b>' + f.name + '</b> — drop another to swap';
+    load(f.name.endsWith('.json') ? r.result : r.result);
+  };
+  if (f.name.endsWith('.json')) r.readAsText(f); else r.readAsArrayBuffer(f);
+}
+
+// start on the file this site ships
+fetch('splash.lottie').then((r) => r.arrayBuffer()).then(load);
+</script>
+</body>
+</html>
