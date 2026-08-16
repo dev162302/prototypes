@@ -76,28 +76,6 @@
     if (max) p.style.fontSize = max + 'px';
   });
 
-  /* The home screen's orb, animated.
-
-     Figma draws the centrepiece as two still pieces: a faint "ripple effect"
-     PNG and a "heart orbs" SVG on top of it. The client supplied the moving
-     version — "ripple 3", a 600x600 loop, 32 frames at 24fps — and it contains
-     BOTH: a shape layer for the orb and a 24-frame image sequence for the
-     rings around it. So it replaces the pair, and both stills are hidden.
-
-     Worth stating because it is easy to get backwards: the loop is not just
-     the rings. Swapping only the ripple and leaving the drawn orb on top
-     double-draws the orb, and hiding only the orb leaves the still rings
-     behind the moving ones.
-
-     SIZE is derived from the artwork, not guessed. In the loop the orb is
-     0.398 of the frame, measured off a render; Figma draws it at 136px. So the
-     canvas is 136 / 0.398 = 342px and the orb lands exactly where the still
-     one did, with the rings reaching their natural distance around it.
-
-     Drawn plainly — no blend mode, no reduced opacity. Those belonged to the
-     still ripple, which was a faint wash UNDER the orb; carrying them onto a
-     layer that now contains the orb itself washes the orb out. On this sky,
-     plus-lighter at 0.25 made the whole thing disappear. */
   /* Both layouts draw the same centrepiece, but out of different pieces.
 
        mobile   a faint "ripple effect" PNG + a "heart orbs" SVG on top
@@ -109,9 +87,15 @@
      keeps an id table for the screens. Mobile is addressed by name, which is
      stable there. Whichever set is present wins; the other is simply absent.
 
-     The canvas goes in as a SIBLING of the orb, so it inherits the orb's
-     containing block and the orb's own used left/top can be reused directly.
-     That is what keeps one placement calculation working for both. */
+     The moving loop contains BOTH the orb and its rings — worth stating
+     because it is easy to get backwards. Swapping only the ripple and leaving
+     the drawn orb on top double-draws the orb; hiding only the orb leaves the
+     still rings behind the moving ones. So both stills go.
+
+     Drawn plainly, with no blend mode and no reduced opacity: those belonged
+     to the still ripple, which was a faint wash UNDER the orb. Carried onto a
+     layer that now contains the orb they wash it out — on this sky,
+     plus-lighter at 0.25 made the whole thing vanish. */
   var ORB_SETS = [
     { orb: '[data-name^="heart orbs"]',
       hide: ['[data-name^="ripple effect"]', '[data-name^="heart orbs"]'] },
@@ -134,12 +118,19 @@
       if (el) hidden.push(el);
     });
 
-    var o = getComputedStyle(orb);
-    var ORB_L = parseFloat(o.left), ORB_T = parseFloat(o.top), ORB_W = parseFloat(o.width);
+    /* The canvas lives in the VIEWPORT, not in the frame.
 
+       Sizing it to match the splash makes it wider than the frame itself — on
+       a 393px phone the canvas is 422px — and .screen clips (it has to; the
+       scene image behind it is 2984px wide). Left inside, the outer ripple got
+       sliced off down both edges.
+
+       So it sits in #fit, in viewport pixels, which is also the space the
+       splash's numbers are already in. Nothing to convert, and the ripple can
+       radiate past the frame edge the way it does in the splash. */
     var cv = document.createElement('canvas');
-    cv.style.cssText = 'position:absolute;pointer-events:none';
-    orb.parentElement.insertBefore(cv, orb);
+    cv.style.cssText = 'position:fixed;pointer-events:none;z-index:1';
+    (document.getElementById('fit') || document.body).appendChild(cv);
 
     /* Land the home orb exactly where the splash leaves its own.
 
@@ -153,11 +144,10 @@
        The constants are the splash's closing orb, measured in its own comp:
        centre at 50.51% / 49.35% of the frame, diameter 42.87% of its width.
 
-       Worked out ARITHMETICALLY, from the viewport and the two frame sizes —
-       deliberately not by measuring anything. Both the film and this screen's
-       content end up contained and centred in the viewport (see the two-scales
-       note in flow.css: the background covers, .content is counter-scaled back
-       to contain), so each has a known mapping and one converts to the other.
+       Worked out ARITHMETICALLY, straight in viewport pixels — deliberately
+       not by measuring anything. The film is contained and centred in the
+       viewport, so where its orb lands is pure arithmetic, and the canvas now
+       lives in the viewport too, so there is nothing to convert.
 
        Measuring was tried and is a trap here: this runs before fit() has
        transformed the screen, so every box reads half a viewport out, and a
@@ -166,20 +156,12 @@
        ordering problem and needs no retry. */
     var FILM_W = 402, FILM_H = 874, ORB_X = 0.5051, ORB_Y = 0.4935, ORB_D = 0.4287;
     function place() {
-      var cs = getComputedStyle(document.documentElement);
-      var fw = parseFloat(cs.getPropertyValue('--w')) || 393;
-      var fh = parseFloat(cs.getPropertyValue('--h')) || 852;
-      var ck = Math.min(innerWidth / fw, innerHeight / fh);     // this screen
-      var fk = Math.min(innerWidth / FILM_W, innerHeight / FILM_H); // the film
-      if (!ck || !fk) return;
+      var fk = Math.min(innerWidth / FILM_W, innerHeight / FILM_H);
+      if (!fk) return;
       // the splash's closing orb, in viewport pixels
-      var sx = (innerWidth - FILM_W * fk) / 2 + ORB_X * FILM_W * fk;
-      var sy = (innerHeight - FILM_H * fk) / 2 + ORB_Y * FILM_H * fk;
-      var sd = ORB_D * FILM_W * fk;
-      // the same point, in this screen's own coordinates
-      var cx = (sx - (innerWidth - fw * ck) / 2) / ck;
-      var cy = (sy - (innerHeight - fh * ck) / 2) / ck;
-      var size = sd / ck / 0.398;
+      var cx = (innerWidth - FILM_W * fk) / 2 + ORB_X * FILM_W * fk;
+      var cy = (innerHeight - FILM_H * fk) / 2 + ORB_Y * FILM_H * fk;
+      var size = ORB_D * FILM_W * fk / 0.398;
       cv.style.left = (cx - size / 2) + 'px';
       cv.style.top = (cy - size / 2) + 'px';
       cv.style.width = size + 'px';
@@ -187,11 +169,8 @@
     }
     place();
     addEventListener('resize', place);
-    /* visibility, not display: place() measures the orb every time the window
-       changes, and display:none would take its box away and with it the only
-       reference tying this canvas to the screen's current transform. */
     var hide = function (on) {
-      hidden.forEach(function (el) { el.style.visibility = on ? 'hidden' : ''; });
+      hidden.forEach(function (el) { el.style.display = on ? 'none' : ''; });
     };
     hide(true);
 
