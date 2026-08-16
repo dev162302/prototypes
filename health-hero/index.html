@@ -172,34 +172,9 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
       clearTimeout(failsafe);
       failsafe = setTimeout(dismiss, READY_BUDGET);
 
-      /* Two cuts of the same film, chosen by the shape of the window.
-
-         The film is a 402x874 portrait comp, and it CLIPS to that frame —
-         including the ripple's glow, which is wider than the frame and gets
-         its sides sliced off. On a phone that does not show, because the frame
-         is very nearly the whole screen and the cut lands off the edge of it.
-
-         On a wide window 'contain' shrinks the frame to a strip — 350px of
-         1470 — and the slice lands in plain sight: the glow appears as an arc
-         with two hard vertical edges down the middle of the screen, which is
-         what reads as the background covering the animation.
-
-         The wide cut is the same film with its comp widened to 1554 (16:9
-         against its own 874) and its precomp clip opened up, with the content
-         recentred so nothing moves. The glow then finishes inside the frame
-         and shows as the full soft circle it was drawn as, fading out on its
-         own instead of being chopped. Everything else is untouched — same
-         layers, same timing, glow included.
-
-         Covering instead of containing would also fill the width, but a
-         portrait comp on a landscape screen loses roughly three quarters of
-         its height doing it, and the Novo mark goes with it. */
-      var portraitish = innerWidth / innerHeight < 402 / 874 * 1.35;
-      var film = portraitish ? 'splash/splash.lottie' : 'splash/splash-wide.lottie';
-
       return Promise.all([
         DotLottie.preload(),
-        fetch(film).then(function (r) {
+        fetch('splash/splash.lottie').then(function (r) {
           if (!r.ok) throw new Error('splash ' + r.status);
           return r.arrayBuffer();
         })
