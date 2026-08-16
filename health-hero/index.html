@@ -69,6 +69,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   var F = { intro: document.getElementById('f-intro'), game: document.getElementById('f-game'),
             ended: document.getElementById('f-ended'), board: document.getElementById('f-board') };
   var mode = null, current = null, run = null, entry = null, nameInput = null, confirmed = false;
+  var returning = false;   // this device already owns a name
   var placeInput = function () {};
   var ids = function () { return IDS[mode]; };
 
@@ -212,13 +213,26 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     resetEnded();
     placeInput();
 
-    // Already claimed a name on this device? Submit silently and go straight to
-    // the board — asking again would only offer them a name they cannot have.
+    // Write the score first: the returning-player branch below returns early,
+    // and skipping this left them looking at the score from their previous run.
+    var sn = node(F.ended, ids().score), sp = sn && sn.querySelector('span');
+    if (sp) sp.textContent = run.score.toLocaleString() + ' ';
+
+    /* Already claimed a name on this device?
+       Submit quietly and STAY on this screen. Asking again would only offer a
+       name they cannot have, and jumping straight to the board skips the bit
+       they came back for — seeing what they scored. The name field becomes a
+       LEADERBOARD button instead, so the two things they might want next are
+       side by side: go again, or go look. */
     var known = API && me();
     if (known && known.handle && known.token) {
-      submit(known.handle, known.token, function () { showBoard(); });
+      returning = true;
+      submit(known.handle, known.token, function () {});
+      asLeaderboardButton();
+      show('ended');
       return;
     }
+    returning = false;
     var n = node(F.ended, ids().score), s = n && n.querySelector('span');
     if (s) s.textContent = run.score.toLocaleString() + ' ';
     show('ended');
@@ -230,11 +244,35 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 
   function resetEnded() {
     confirmed = false;
+    if (!returning) asNameField();
     if (!nameInput) return;
     nameInput.value = ''; nameInput.disabled = false;
     var icon = node(F.ended, ids().arrow);
     icon = icon && icon.querySelector('img');
     if (icon && icon.dataset.arrow) icon.src = icon.dataset.arrow;
+  }
+
+  /* Re-label the name field as a LEADERBOARD button.
+     Same pixel-art button, same arrow — only the label and what it does change,
+     so nothing new has to be drawn and it still matches the design. */
+  function asLeaderboardButton() {
+    if (!nameInput) return;
+    var label = node(F.ended, ids().label);
+    nameInput.style.display = 'none';
+    if (label) {
+      label.style.visibility = 'visible';
+      var p = label.querySelector('p') || label;
+      p.textContent = 'LEADERBOARD';
+      label.style.color = '#fff';
+    }
+  }
+
+  /* Undo it, for a player who arrives without a name. */
+  function asNameField() {
+    if (!nameInput) return;
+    var label = node(F.ended, ids().label);
+    nameInput.style.display = '';
+    if (label) label.style.visibility = 'hidden';
   }
 
   /* The two states Figma added for the field. */
@@ -250,6 +288,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   }
 
   function confirmName() {
+    if (returning) { showBoard(); return; }   // the field is a LEADERBOARD button now
     if (confirmed || !run) return;
     var handle = (nameInput.value || '').trim().toUpperCase();
     if (!handle) { nameInput.focus(); return; }
