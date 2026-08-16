@@ -404,24 +404,31 @@
         position: absolute;
         left: 50%;
         transform: translateX(-50%);
-        top: calc(112px + env(safe-area-inset-top));
+        /* Portrait frame: Layer_1 at (105.74, 741), 181.46 x 27.93 on 393x852.
+           Anchored from the BOTTOM rather than at top:741 — the frame is one
+           phone, and every other phone is a different height; measuring from
+           the bottom keeps the designed gap on all of them.
+           852 - (741 + 27.93) = 83. */
+        bottom: calc(83px + env(safe-area-inset-bottom));
         width: 181.464px;
       }
       #disclaimer {
         position: absolute;
         left: 50%;
         transform: translateX(-50%);
-        bottom: calc(10px + env(safe-area-inset-bottom));
+        /* Portrait frame: 292 x 20 at (51, 792) on 393x852, Apis Regular 8px,
+           tracking -0.16, leading 1.25, and its own shadow — the portrait and
+           landscape frames do NOT share these; each was set separately.
+           852 - (792 + 20) = 40. */
+        bottom: calc(40px + env(safe-area-inset-bottom));
         width: 292px;
         text-align: center;
         font-family: 'Apis', 'Ari-W9500', 'Helvetica Neue', Helvetica, Arial, sans-serif;
         font-size: 8px;
         letter-spacing: -0.16px;
-        line-height: 1.36;
+        line-height: 1.25;
         color: #fff;
-        /* the deck under this is dark stone, the sky above it near-white, so
-           the line needs a dark edge to survive both */
-        text-shadow: 0 -1px 15.3px rgba(3, 28, 103, 0.4), 0 1px 2px rgba(1, 24, 100, 0.55);
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.33);
       }
       #disclaimer a {
         color: inherit;
@@ -435,7 +442,7 @@
         position: absolute;
         left: 50%;
         transform: translateX(-50%);
-        bottom: calc(58px + env(safe-area-inset-bottom));
+        bottom: calc(128px + env(safe-area-inset-bottom));
         pointer-events: auto;
         cursor: pointer;
         padding: 11px 24px;
@@ -712,6 +719,7 @@
         /* frame: Layer_1 at (750.3, 68), 418.7 x 64.4 */
         #lockup {
           top: calc(68 * var(--k));
+          bottom: auto;
           width: calc(418.7 * var(--k));
         }
         /* frame: 382 x 36 at (769, 1007), Apis Regular 13.37px */
@@ -721,6 +729,8 @@
           width: calc(382 * var(--k));
           font-size: calc(13.37 * var(--k));
           letter-spacing: calc(-0.2674 * var(--k));
+          line-height: 1.36;
+          text-shadow: 0 -1px calc(15.3 * var(--k)) rgba(3, 28, 103, 0.4);
         }
         #ranksBtn { bottom: calc(1080 * var(--k) * 0.085); }
       }
