@@ -140,46 +140,10 @@
     var size = parseFloat(o.width) / 0.398;
 
     var cv = document.createElement('canvas');
-    var top0 = cy - size / 2;                 // the design position, kept to reset to
     cv.style.cssText =
       'position:absolute;pointer-events:none;left:' + (cx - size / 2) + 'px;top:' +
-      top0 + 'px;width:' + size + 'px;height:' + size + 'px';
+      (cy - size / 2) + 'px;width:' + size + 'px;height:' + size + 'px';
     orb.parentElement.insertBefore(cv, orb);
-
-    /* Land the orb where the splash film leaves it, so the two meet.
-
-       The film is 402x874 and the splash renders it with fit:'contain'. That
-       is height-bound for any viewport wider in aspect than 402/874 = 0.46 —
-       which is every phone and every desktop — so it always ends with the orb
-       centred at the SAME fraction of viewport height:
-
-           430.9 / 874 = 0.49302
-
-       Checked against the rendered film at 393x852, 1440x900, 1600x1000 and
-       1920x1080: predicted within about a pixel at all four.
-
-       Only the vertical is touched. Horizontally the two already agree to a
-       pixel, and the sizes are the film's own business — this is about the
-       orb not jumping when the splash hands over.
-
-       Measured, then reset, then measured again: `top` is in the frame's own
-       units and the frame is scaled by fit(), so the correction has to be
-       divided by that scale. Reading the scale off the canvas's own rendered
-       height is what keeps this working at any zoom without knowing which of
-       the two layout modes is running. Resetting to top0 first makes it
-       idempotent, which matters because it re-runs on every resize. */
-    var SPLASH_ENDS_AT = 430.9 / 874;
-    function alignToSplash() {
-      cv.style.top = top0 + 'px';
-      var r = cv.getBoundingClientRect();
-      if (!r.height) return;                  // not laid out yet; a resize will retry
-      var scale = r.height / size;
-      if (!scale) return;
-      var have = r.top + r.height / 2;
-      var want = SPLASH_ENDS_AT * innerHeight;
-      cv.style.top = (top0 + (want - have) / scale) + 'px';
-    }
-    window.FLOW_ALIGN_ORB = alignToSplash;    // fit() calls this once it has scaled
     var hide = function (on) {
       hidden.forEach(function (el) { el.style.display = on ? 'none' : ''; });
     };
@@ -282,14 +246,8 @@
     screenEl.style.transform = 'translate(-50%,-50%) scale(' + base + ')';
     if (content) content.style.transform = 'scale(' + contain / base + ')';
   }
-  /* fit() first, then the orb: the alignment reads the live scale off the
-     page, so it is only correct once the frame has been scaled for this size. */
-  function layout() {
-    fit();
-    if (window.FLOW_ALIGN_ORB) window.FLOW_ALIGN_ORB();
-  }
-  addEventListener('resize', layout);
-  addEventListener('orientationchange', layout);
-  if (window.ResizeObserver) new ResizeObserver(layout).observe(document.documentElement);
-  layout();
+  addEventListener('resize', fit);
+  addEventListener('orientationchange', fit);
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(document.documentElement);
+  fit();
 })();
