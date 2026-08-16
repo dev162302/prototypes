@@ -722,10 +722,17 @@
           bottom: auto;
           width: calc(418.7 * var(--k));
         }
-        /* frame: 382 x 36 at (769, 1007), Apis Regular 13.37px */
+        /* frame: 382 x 36 at (769, 1007), Apis Regular 13.37px.
+
+           Anchored from the BOTTOM, like the portrait rule, not at top:1007k.
+           --k is min(vw/1920, vh/1080), so on any window that is not 16:9 it
+           is bound by the SHORTER side and the frame ends before the window
+           does. On a 2940x1846 screen that left the line 248px up from the
+           footer. Holding the frame's own bottom gap instead — 1080-(1007+36)
+           = 37 — keeps it on the footer at every aspect. */
         #disclaimer {
-          top: calc(1007 * var(--k));
-          bottom: auto;
+          top: auto;
+          bottom: calc(37 * var(--k));
           width: calc(382 * var(--k));
           font-size: calc(13.37 * var(--k));
           letter-spacing: calc(-0.2674 * var(--k));
