@@ -237,10 +237,10 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
      shape describes both. */
   var IDS = {
     m: { score:'636:2040', label:'636:2048', face:'636:2047',
-         again:'636:2219', boardAgain:'599:1600',
+         again:'636:2219', boardAgain:'599:1600', scene:'636:1992',
          rowBtn0:1332, row0:1335, mine:{btn:'599:1387', base:1390} },
     d: { score:'643:3961', label:'643:3969', face:'643:3968',
-         again:'643:4140', boardAgain:'643:4788',
+         again:'643:4140', boardAgain:'643:4788', scene:'643:3954',
          rowBtn0:4517, row0:4523, mine:{btn:'643:4573', base:4578} }
   };
   /* The name field's states, as Figma draws them.
@@ -280,6 +280,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   var F = { intro: document.getElementById('f-intro'), game: document.getElementById('f-game'),
             ended: document.getElementById('f-ended'), board: document.getElementById('f-board') };
   var mode = null, current = null, run = null, entry = null, nameInput = null, confirmed = false;
+  var shot = null;   // the frame the run ended on, from the game
   var fieldBtn = null, fieldArt = null;   // the field's Button, and its 25 images
   var returning = false;   // this device already owns a name
   var placeInput = function () {};
@@ -363,7 +364,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     if (d.type === 'rw:ready') {
       gameReady = true;
       if (wantStart) { wantStart = false; F.game.contentWindow.postMessage({ type: 'rw:start' }, '*'); }
-    } else if (d.type === 'rw:ended') { run = d.run; showEnded(); }
+    } else if (d.type === 'rw:ended') { run = d.run; shot = d.shot || null; showEnded(); }
   });
 
   /* ------------------------------------------------------------- wiring -- */
@@ -422,8 +423,38 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   }
 
   /* ----------------------------------------------------- run-ended screen -- */
+  /* Put the frame the run ended on behind the ended screen.
+
+     Figma's backdrop there is a piece of concept art sized well past the frame
+     and offset so the interesting part lands in view — 2984x1680 at (-992,-510)
+     on desktop. A screen grab does not want that crop: it is already exactly
+     the picture, so the box is reset to fill the frame and the image is told to
+     cover. Both breakpoints hold the same shape, so one path serves both.
+
+     Everything is restored if there is no shot, because the same iframe is
+     reused for every run and a stale backdrop is worse than the stock art. */
+  function paintScene() {
+    var el = node(F.ended, ids().scene);
+    if (!el) return;
+    var img = el.querySelector('img');
+    if (!img) return;
+    if (!el.getAttribute('data-orig')) {
+      el.setAttribute('data-orig', el.getAttribute('style') || '');
+      img.setAttribute('data-orig', img.getAttribute('src') || '');
+    }
+    if (!shot) {
+      el.setAttribute('style', el.getAttribute('data-orig'));
+      img.src = img.getAttribute('data-orig');
+      return;
+    }
+    el.setAttribute('style', 'position:absolute;left:0;top:0;width:100%;height:100%');
+    img.src = shot;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block';
+  }
+
   function showEnded() {
     resetEnded();
+    paintScene();
     placeInput();
 
     // Write the score first: the returning-player branch below returns early,
