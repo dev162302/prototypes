@@ -238,9 +238,11 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   var IDS = {
     m: { score:'636:2040', label:'636:2048', face:'636:2047',
          again:'636:2219', boardAgain:'599:1600', scene:'636:1992',
+         fieldBtn:'636:2044', againBtn:'636:2131', lbHead:'636:2043',
          rowBtn0:1332, row0:1335, mine:{btn:'599:1387', base:1390} },
     d: { score:'643:3961', label:'643:3969', face:'643:3968',
          again:'643:4140', boardAgain:'643:4788', scene:'643:3954',
+         fieldBtn:'643:3965', againBtn:'643:4052', lbHead:'643:3964',
          rowBtn0:4517, row0:4523, mine:{btn:'643:4573', base:4578} }
   };
   /* The name field's states, as Figma draws them.
@@ -497,21 +499,139 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   /* Re-label the name field as a LEADERBOARD button.
      Same pixel-art button, same arrow — only the label and what it does change,
      so nothing new has to be drawn and it still matches the design. */
+  /* A returning player's LEADERBOARD button.
+
+     It used to be the name FIELD with its label swapped, which left it wearing
+     the field's artwork: dark navy with the white arrow box on the right, under
+     a "LEADERBOARD" heading. The designer's returning-player frame has neither.
+     It has two identical white buttons, LEADERBOARD above PLAY AGAIN.
+
+     So rather than restyle the field to look like a button, this borrows the
+     real one: PLAY AGAIN is cloned WHOLE and dropped into the field's slot.
+
+     Whole, and into PLAY AGAIN's OWN container — both details were learned the
+     hard way. Moving just the children put them in the field's grid instead of
+     their own and five pieces collapsed to 0x0, including the white face, so
+     the button came out navy with a bevel round it. Cloning the element fixed
+     the face but dropping it in the field's slot still sized it 258x107
+     instead of 258x68, because these buttons take their height from the
+     container they sit in. Placed beside the real one it is identical by
+     construction.
+
+     Nothing is destroyed: the field's whole block is hidden, not emptied, so
+     clearing the stored identity puts the name entry back without a reload. */
   function asLeaderboardButton() {
-    if (!nameInput) return;
-    var label = node(F.ended, ids().label);
-    nameInput.style.display = 'none';
-    if (label) {
-      label.style.visibility = 'visible';
-      var p = label.querySelector('p') || label;
-      p.textContent = 'LEADERBOARD';
-      label.style.color = '#fff';
+    var I = ids();
+    var field = node(F.ended, I.fieldBtn), again = node(F.ended, I.againBtn);
+    if (!field || !again) return;                  // leave the screen as it was
+    if (nameInput) nameInput.style.display = 'none';
+
+    var clone = again.parentElement.querySelector('[data-as="lb"]');
+    if (!clone) {
+      clone = again.cloneNode(true);
+      clone.setAttribute('data-as', 'lb');
+      /* The id is dropped so node() cannot pick the clone up instead of the
+         real button — but the compiled screen styles the button THROUGH that
+         id, so the grid that positions the label and the glyph goes with it
+         and the clone falls back to display:block. That is what pushed the
+         word out from under the artwork. Carry the container's own layout
+         across explicitly, so the clone owns it and depends on no selector. */
+      clone.removeAttribute('data-node-id');
+      var cs = getComputedStyle(again);
+      ['display', 'position', 'width', 'height', 'gridTemplateRows',
+       'gridTemplateColumns', 'alignItems', 'justifyItems'].forEach(function (k) {
+        clone.style[k] = cs[k];
+      });
+      /* Remembered, because hiding and showing this thing goes through
+         style.display — and setting it back to '' would drop the grid above
+         with it, which puts the label out from under the artwork again. */
+      clone.setAttribute('data-disp', cs.display);
+      clone.style.cursor = 'pointer';
+      clone.addEventListener('click', function () { showBoard(); });
+      again.parentElement.insertBefore(clone, again);
+
+      /* Retitle, then drop the reload glyph.
+
+         The glyph CANNOT be selected as [data-name="Vector"]: Figma names
+         every piece of the button's artwork Vector — the white face, all four
+         bevels, every corner — so that selector hides the entire button and
+         leaves a bare word floating in a collapsed box. It is found
+         structurally instead, as the small element sitting immediately after
+         the label in the button's grid, which is where the frame puts it. */
+      [].forEach.call(clone.querySelectorAll('p, span'), function (el) {
+        if ((el.textContent || '').trim().toUpperCase() !== 'PLAY AGAIN') return;
+        el.textContent = 'LEADERBOARD';
+        var host = el.parentElement;
+        while (host && host !== clone && !host.hasAttribute('data-node-id')) host = host.parentElement;
+        var icon = host && host.nextElementSibling;
+        if (icon && icon.getAttribute('data-name') === 'Vector' && icon.offsetWidth < 40)
+          icon.style.display = 'none';
+      });
     }
+    clone.style.display = clone.getAttribute('data-disp') || 'grid';
+    // the field AND its heading go together; the frame has neither, and
+    // leaving the block in place would hold open a gap above the buttons
+    field.parentElement.style.display = 'none';
   }
+
+  /* Put the name field back, for a device whose identity has been cleared. */
+  function asNameFieldArt() {
+    var field = node(F.ended, ids().fieldBtn), again = node(F.ended, ids().againBtn);
+    if (field) field.parentElement.style.display = '';
+    var clone = again && again.parentElement.querySelector('[data-as="lb"]');
+    if (clone) clone.style.display = 'none';
+  }
+
+  function showEnded() {
+    resetEnded();
+    paintScene();
+    placeInput();
+
+    // Write the score first: the returning-player branch below returns early,
+    // and skipping this left them looking at the score from their previous run.
+    var sn = node(F.ended, ids().score), sp = sn && sn.querySelector('span');
+    if (sp) sp.textContent = run.score.toLocaleString() + ' ';
+
+    /* Already claimed a name on this device?
+       Submit quietly and STAY on this screen. Asking again would only offer a
+       name they cannot have, and jumping straight to the board skips the bit
+       they came back for — seeing what they scored. The name field becomes a
+       LEADERBOARD button instead, so the two things they might want next are
+       side by side: go again, or go look. */
+    var known = API && me();
+    if (known && known.handle && known.token) {
+      returning = true;
+      submit(known.handle, known.token, function () {});
+      asLeaderboardButton();
+      show('ended');
+      return;
+    }
+    returning = false;
+    var n = node(F.ended, ids().score), s = n && n.querySelector('span');
+    if (s) s.textContent = run.score.toLocaleString() + ' ';
+    show('ended');
+    // Only auto-focus where a keyboard is already present: on a touch device it
+    // throws the keyboard up before the score has been read.
+    if (!matchMedia('(pointer: coarse)').matches)
+      setTimeout(function () { try { nameInput.focus(); } catch (e) {} }, 220);
+  }
+
+  function resetEnded() {
+    confirmed = false;
+    if (!returning) asNameField();
+    if (!nameInput) return;
+    nameInput.value = ''; nameInput.disabled = false;
+    fieldState('idle');
+  }
+
+  /* Re-label the name field as a LEADERBOARD button.
+     Same pixel-art button, same arrow — only the label and what it does change,
+     so nothing new has to be drawn and it still matches the design. */
 
   /* Undo it, for a player who arrives without a name. */
   function asNameField() {
     if (!nameInput) return;
+    asNameFieldArt();
     var label = node(F.ended, ids().label);
     nameInput.style.display = '';
     if (label) label.style.visibility = 'hidden';
