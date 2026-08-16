@@ -67,6 +67,9 @@
    can be pointed at a local Worker while developing. */
 window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 </script>
+<!-- The Figma button states, generated from the components. Loaded here rather
+     than inside each screen: the host owns the button behaviour. -->
+<script src="buttons.js"></script>
 <script>
 /* ---------------------------------------------------------------- splash --
 
@@ -406,18 +409,47 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
       nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmName(); });
       fieldBtn = label.closest('[data-name="Button"]');
       fieldArt = null;                       // re-read: the two frames differ
-      if (fieldBtn) fieldBtn.addEventListener('click', confirmName);
+      if (fieldBtn) {
+        fieldBtn.addEventListener('click', confirmName);
+        fieldBtn.style.cursor = 'pointer';
+        wireHover(fieldBtn,
+          function () { fieldHover = true;  paint(); },
+          function () { fieldHover = false; paint(); });
+      }
       var again = node(F.ended, I.again);
-      if (again && again.closest('[data-name="Button"]'))
-        again.closest('[data-name="Button"]').addEventListener('click', function () { resetEnded(); play(); });
+      again = again && again.closest('[data-name="Button"]');
+      if (again) again.addEventListener('click', function () { resetEnded(); play(); });
     });
   }
+
+  /* NOT DONE: Play Again's hover and pressed states.
+
+     The field's states could be swapped piece by piece because its page export
+     and its component export agree on 25 pieces in the same order. Play
+     Again's do not — the page has 28, the component's hover export 26 and its
+     pressed export 27, and the orders differ — so there is no index to map.
+     Matching by shape instead gave two different answers on the two
+     breakpoints, which is the kind of nearly-right that ships a button with
+     one wrong bevel.
+
+     Swapping in Figma's own compiled markup for the state was tried and backed
+     out: the fragment is absolutely positioned and the Button element does not
+     give it the containing block Figma's inline-grid idiom assumes, so the
+     contents collapse on top of each other.
+
+     What it needs is the button re-exported as its own frame so the compiled
+     fragment carries its own sizing context. Worth noting the states are NOT a
+     tint of the default and cannot be faked with a filter: fifteen of the
+     button's colours map to two different destinations depending on where they
+     sit, and #cbd1e1 goes white on hover but black on pressed — the bevel
+     inverts. */
+
 
   function wireBoard() {
     ready(F.board, function () {
       var a = node(F.board, ids().boardAgain);
-      if (a && a.closest('[data-name="Button"]'))
-        a.closest('[data-name="Button"]').addEventListener('click', function () { resetEnded(); play(); });
+      a = a && a.closest('[data-name="Button"]');
+      if (a) a.addEventListener('click', function () { resetEnded(); play(); });
     });
   }
 
@@ -503,16 +535,47 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   }
 
   /* Apply one of Figma's three field states. */
-  function fieldState(state, text) {
-    if (text !== undefined && nameInput) nameInput.value = text;
+  /* Which state the field is in, and whether the pointer is over it. Figma
+     draws a hover for all four states, so the two are independent and both
+     have to be remembered — hovering must not lose the state, and changing
+     state while hovered must not lose the hover. */
+  var fieldNow = 'idle', fieldHover = false;
+
+  function paint() {
     var art = fieldImgs();
     if (!art) return;
+
+    /* Hover is a full 25-piece set per state, straight from the component, so
+       it is applied as a set rather than as a delta. The page's own pieces and
+       the component's agree on count and order — checked piece by piece — which
+       is what makes indexing across the two safe. */
+    var hov = fieldHover && window.BTN_HOVER && window.BTN_HOVER[fieldNow];
+    if (hov && hov.length === art.length) {
+      art.forEach(function (a, i) { a.el.src = 'assets/' + hov[i]; });
+      return;
+    }
+
     art.forEach(function (a) { a.el.src = a.src; });     // Figma's default first
-    if (state === 'ok') art[FRAME].el.src = TICK;
-    if (state === 'taken') {
+    if (fieldNow === 'ok') art[FRAME].el.src = TICK;
+    if (fieldNow === 'taken') {
       for (var i in FIELD_RED) art[i].el.src = FIELD_RED[i];
       art[FRAME].el.src = CROSS;
     }
+  }
+
+  function fieldState(state, text) {
+    if (text !== undefined && nameInput) nameInput.value = text;
+    fieldNow = state;
+    paint();
+  }
+
+  /* Hover is bound only where a pointer can actually hover. On a touch screen
+     :hover latches after a tap and stays stuck until you touch something else,
+     which would leave the field in its hover art for the rest of the run. */
+  function wireHover(el, on, off) {
+    if (!el || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    el.addEventListener('pointerenter', on);
+    el.addEventListener('pointerleave', off);
   }
 
   function confirmName() {
