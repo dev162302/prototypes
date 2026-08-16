@@ -387,11 +387,55 @@
         letter-spacing: 0.16em;
         margin-top: 48px;
       }
+      /* ── the lockup and the legal line ───────────────────────────────────
+         PORTRAIT first, in plain px. The landscape block further down re-lays
+         both onto the 1920x1080 frame, and its --k lives only inside that
+         query: a calc() against an undefined custom property is invalid and
+         drops the whole declaration, which is exactly how a shared rule would
+         break the phone.
+
+         The phone cannot use the frame's placement. There the lockup is top
+         centre, but on a 393px screen the two stone panels leave only 99px of
+         clear middle and the lockup is 181 — so it sits just BELOW them
+         instead, which is clear of the panels and of #low at 20%. Its width is
+         the campaign's own mobile lockup size, taken from the intro screen
+         rather than invented. */
+      #lockup {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        top: calc(112px + env(safe-area-inset-top));
+        width: 181.464px;
+      }
+      #disclaimer {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: calc(10px + env(safe-area-inset-bottom));
+        width: 292px;
+        text-align: center;
+        font-family: 'Apis', 'Ari-W9500', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 8px;
+        letter-spacing: -0.16px;
+        line-height: 1.36;
+        color: #fff;
+        /* the deck under this is dark stone, the sky above it near-white, so
+           the line needs a dark edge to survive both */
+        text-shadow: 0 -1px 15.3px rgba(3, 28, 103, 0.4), 0 1px 2px rgba(1, 24, 100, 0.55);
+      }
+      #disclaimer a {
+        color: inherit;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-position: from-font;
+        pointer-events: auto;
+      }
+
       #ranksBtn {
         position: absolute;
         left: 50%;
         transform: translateX(-50%);
-        bottom: calc(28px + env(safe-area-inset-bottom));
+        bottom: calc(58px + env(safe-area-inset-bottom));
         pointer-events: auto;
         cursor: pointer;
         padding: 11px 24px;
@@ -653,6 +697,33 @@
       #lost.on {
         display: grid;
       }
+
+      /* ── landscape: the designer's frame, reproduced ─────────────────────
+         Figma draws the game screen at 1920x1080, so --k is one frame pixel
+         and every number below is that frame's own. From min(), not width
+         alone: on a window shorter than 16:9 the lockup would otherwise grow
+         until it crowded the play area.
+
+         Scoped to this query on purpose. --k is defined nowhere else, so the
+         portrait rules above cannot accidentally depend on it. */
+      @media (min-width: 768px) and (min-aspect-ratio: 1 / 1) {
+        #ui { --k: min(100vw / 1920, 100vh / 1080); }
+
+        /* frame: Layer_1 at (750.3, 68), 418.7 x 64.4 */
+        #lockup {
+          top: calc(68 * var(--k));
+          width: calc(418.7 * var(--k));
+        }
+        /* frame: 382 x 36 at (769, 1007), Apis Regular 13.37px */
+        #disclaimer {
+          top: calc(1007 * var(--k));
+          bottom: auto;
+          width: calc(382 * var(--k));
+          font-size: calc(13.37 * var(--k));
+          letter-spacing: calc(-0.2674 * var(--k));
+        }
+        #ranksBtn { bottom: calc(1080 * var(--k) * 0.085); }
+      }
     </style>
     <script type="module" crossorigin src="./assets/index-BROHoeKo.js"></script>
   </head>
@@ -669,6 +740,16 @@
           <div id="tank"></div>
           <div class="sub2" id="capnote">MAX 4</div>
         </div>
+      </div>
+      <!-- Always on the game screen, per the designer's frame: the brand lockup
+           and the legal line. Neither is a game element and neither reacts to
+           play; they are simply always there. -->
+      <img id="lockup" src="art/lockup.webp" alt="novo nordisk — ueber-gewicht.de">
+      <div id="disclaimer">
+        <div>This experience is brought to you by Novo Nordisk.</div>
+        <div>For information on Privacy Policy &amp; Legal Disclaimer,
+          <a href="https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html"
+             target="_blank" rel="noopener noreferrer">Click here</a></div>
       </div>
       <div id="low">LOW ON JUMPS</div>
       <div id="bonus"><b>BONUS</b><span>+1 Jump</span></div>
