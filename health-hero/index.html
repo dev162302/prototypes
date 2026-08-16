@@ -174,26 +174,26 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 
       /* Two cuts of the same film, chosen by the shape of the window.
 
-         The film is a 402x874 portrait comp, and everything it paints — the
-         ripple's soft glow included — is confined to that frame. On a phone
-         the frame is very nearly the whole screen, so the glow reads as a
-         vignette over the whole thing, which is how it was drawn.
+         The film is a 402x874 portrait comp, and it CLIPS to that frame —
+         including the ripple's glow, which is wider than the frame and gets
+         its sides sliced off. On a phone that does not show, because the frame
+         is very nearly the whole screen and the cut lands off the edge of it.
 
-         On a wide window 'contain' shrinks that frame to a narrow strip: at
-         1470x850 it is 350px, a quarter of the width. The glow then makes
-         that strip measurably lighter than the flat colour beside it — 6.33
-         brightness, with a hard vertical edge of 7.67 down both sides — and it
-         reads as the background cutting the animation off. Measured, both
-         with the glow (7.67) and without it (0.00).
+         On a wide window 'contain' shrinks the frame to a strip — 350px of
+         1470 — and the slice lands in plain sight: the glow appears as an arc
+         with two hard vertical edges down the middle of the screen, which is
+         what reads as the background covering the animation.
 
-         Covering instead of containing would fill the width, but a portrait
-         comp on a landscape screen has to lose about three quarters of its
-         height to do it, and the Novo mark goes with it.
+         The wide cut is the same film with its comp widened to 1554 (16:9
+         against its own 874) and its precomp clip opened up, with the content
+         recentred so nothing moves. The glow then finishes inside the frame
+         and shows as the full soft circle it was drawn as, fading out on its
+         own instead of being chopped. Everything else is untouched — same
+         layers, same timing, glow included.
 
-         So a wide window gets the cut without the glow layers, where the
-         strip is exactly the colour of everything around it and the seam does
-         not exist. Nothing else differs between the two files, and the phone —
-         which is what the QR code points at — plays the film as delivered. */
+         Covering instead of containing would also fill the width, but a
+         portrait comp on a landscape screen loses roughly three quarters of
+         its height doing it, and the Novo mark goes with it. */
       var portraitish = innerWidth / innerHeight < 402 / 874 * 1.35;
       var film = portraitish ? 'splash/splash.lottie' : 'splash/splash-wide.lottie';
 
