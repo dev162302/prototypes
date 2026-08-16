@@ -70,6 +70,45 @@
         justify-content: space-between;
         padding: 0 24px;
       }
+      /* The stone HUD panels from the Gamescom art drop.
+
+         9-sliced rather than stretched. The asset is 661x251 with a 25px stone
+         rim and rounded corners; the panels it has to fill are far wider and
+         flatter than that, and background-size:100% 100% would smear the
+         corner stones and the vines along with them. border-image keeps the
+         corners at their own proportions and stretches only the straight runs.
+
+         The type sits on grey stone now, not on a dark sky, so the labels and
+         values are dark ink with a light halo — the old near-white with a navy
+         glow disappeared completely against it. */
+      .panel {
+        border: 15px solid transparent;
+        border-image: url('art/uibox.png') 56 60 fill / 15px 16px / 0 stretch;
+        min-width: 118px;
+        padding: 1px 4px 3px;
+      }
+      .panel .k {
+        color: #2f3d4a;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+      }
+      .panel .v {
+        color: #123a86;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+      }
+      .panel .sub2 {
+        color: #3c4a57;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+      }
+      /* the pips were a light blue that glowed on the old dark stage; on grey
+         stone they washed out, so they become solid brand blue with a rim */
+      .panel .pip {
+        background: #123a86;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+      }
+      .panel .pip.ghost {
+        background: rgba(18, 58, 134, 0.22);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+      }
       /* HUD type, taken from the Figma game-flow screens rather than invented
          here: labels in #bbcff4, values in near-white, and the soft glow those
          screens put behind text so it survives a bright pixel-art background.
@@ -448,7 +487,10 @@
         font-size: 13px;
         font-weight: 600;
         letter-spacing: 0.42em;
+        /* gold on a bright sky is barely there; the same gold with a dark
+           outline keeps the brand accent and stays legible over cloud */
         color: #ffd479;
+        text-shadow: 0 1px 0 #123a86, 0 0 8px rgba(18, 58, 134, 0.9);
         text-indent: 0.42em;
       }
       #bonus span {
@@ -457,7 +499,9 @@
         font-size: clamp(26px, 8vw, 34px);
         font-weight: 700;
         color: #f4f9ff;
-        text-shadow: 0 2px 18px rgba(0, 16, 63, 0.9);
+        /* tightened from an 18px glow to a hard edge: a soft navy glow on a
+           near-white sky reads as blur, not contrast */
+        text-shadow: 0 2px 0 #123a86, 0 0 12px rgba(18, 58, 134, 0.95);
       }
       @keyframes bonusIn {
         0%   { opacity: 0; transform: translateY(-50%) scale(0.8); }
@@ -534,8 +578,13 @@
         text-align: center;
         font-size: 11px;
         letter-spacing: 0.3em;
-        color: #ff8fa6;
-        font-weight: 600;
+        /* was #ff8fa6 — a pale pink that vanished once the stage went daytime.
+           Deep red on a white halo survives over both sky and cloud. */
+        color: #c8102e;
+        text-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.85),
+          0 0 10px rgba(255, 255, 255, 0.9);
+        font-weight: 700;
         opacity: 0;
         transition: opacity 0.15s;
       }
@@ -605,17 +654,17 @@
         display: grid;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-DQ9PsRH-.js"></script>
+    <script type="module" crossorigin src="./assets/index-CxGpnMmr.js"></script>
   </head>
   <body>
     <div id="ui">
       <div class="hud">
-        <div>
+        <div class="panel">
           <div class="k">SCORE</div>
           <div class="v"><span id="score">0</span></div>
           <div class="sub2"><span id="dist">0</span> m &nbsp;·&nbsp; <span id="orbs">0</span> orbs</div>
         </div>
-        <div style="text-align: right">
+        <div class="panel" style="text-align: right">
           <div class="k">JUMPS</div>
           <div id="tank"></div>
           <div class="sub2" id="capnote">MAX 4</div>
