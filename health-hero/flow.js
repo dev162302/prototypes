@@ -76,6 +76,62 @@
     if (max) p.style.fontSize = max + 'px';
   });
 
+  /* The home screen's orb, animated.
+
+     Figma draws the centrepiece as two still pieces: a faint "ripple effect"
+     PNG and a "heart orbs" SVG on top of it. The client supplied the moving
+     version — "ripple 3", a 600x600 loop, 32 frames at 24fps — and it contains
+     BOTH: a shape layer for the orb and a 24-frame image sequence for the
+     rings around it. So it replaces the pair, and both stills are hidden.
+
+     Worth stating because it is easy to get backwards: the loop is not just
+     the rings. Swapping only the ripple and leaving the drawn orb on top
+     double-draws the orb, and hiding only the orb leaves the still rings
+     behind the moving ones.
+
+     SIZE is derived from the artwork, not guessed. In the loop the orb is
+     0.398 of the frame, measured off a render; Figma draws it at 136px. So the
+     canvas is 136 / 0.398 = 342px and the orb lands exactly where the still
+     one did, with the rings reaching their natural distance around it.
+
+     Drawn plainly — no blend mode, no reduced opacity. Those belonged to the
+     still ripple, which was a faint wash UNDER the orb; carrying them onto a
+     layer that now contains the orb itself washes the orb out. On this sky,
+     plus-lighter at 0.25 made the whole thing disappear. */
+  (function orbLoop() {
+    var still = document.querySelector('[data-name^="ripple effect"]');
+    var orb = document.querySelector('[data-name^="heart orbs"]');
+    if (!still || !orb) return;      // desktop bakes both into one flat image
+    var o = getComputedStyle(orb);
+    var cx = parseFloat(o.left) + parseFloat(o.width) / 2;
+    var cy = parseFloat(o.top) + parseFloat(o.height) / 2;
+    var size = parseFloat(o.width) / 0.398;
+
+    var cv = document.createElement('canvas');
+    cv.style.cssText =
+      'position:absolute;pointer-events:none;left:' + (cx - size / 2) + 'px;top:' +
+      (cy - size / 2) + 'px;width:' + size + 'px;height:' + size + 'px';
+    orb.parentElement.insertBefore(cv, orb);
+    var hide = function (on) {
+      still.style.display = on ? 'none' : '';
+      orb.style.display = on ? 'none' : '';
+    };
+    hide(true);
+
+    import('./splash/dotlottie.js').then(function (m) {
+      m.DotLottie.setWasmUrl('splash/dotlottie-player.wasm');
+      var p = new m.DotLottie({
+        canvas: cv, src: 'splash/home.lottie',
+        autoplay: true, loop: true,
+        layout: { fit: 'contain', align: [0.5, 0.5] },
+        renderConfig: { devicePixelRatio: Math.min(devicePixelRatio || 1, 2),
+                        freezeOnOffscreen: true }
+      });
+      // if it cannot play, put the stills back rather than leaving a hole
+      p.addEventListener('loadError', function () { cv.remove(); hide(false); });
+    }).catch(function () { cv.remove(); hide(false); });
+  })();
+
   /* Desktop two-column mode. See the note in flow.css for why. Structure:
 
        .scene-wrap > .scene-box > [Figma scene, at its own offsets]
