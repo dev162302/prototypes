@@ -135,17 +135,63 @@
     });
 
     var o = getComputedStyle(orb);
-    var cx = parseFloat(o.left) + parseFloat(o.width) / 2;
-    var cy = parseFloat(o.top) + parseFloat(o.height) / 2;
-    var size = parseFloat(o.width) / 0.398;
+    var ORB_L = parseFloat(o.left), ORB_T = parseFloat(o.top), ORB_W = parseFloat(o.width);
 
     var cv = document.createElement('canvas');
-    cv.style.cssText =
-      'position:absolute;pointer-events:none;left:' + (cx - size / 2) + 'px;top:' +
-      (cy - size / 2) + 'px;width:' + size + 'px;height:' + size + 'px';
+    cv.style.cssText = 'position:absolute;pointer-events:none';
     orb.parentElement.insertBefore(cv, orb);
+
+    /* Land the home orb exactly where the splash leaves its own.
+
+       The splash hands straight over to this screen, so the orb must not move
+       across the cut. It did: on a phone it shrank to 0.81 and hopped 7.5px
+       up, on desktop it grew to 1.16 and dropped 65px. Opposite directions,
+       because the two are fitted differently — the splash is CONTAINED in its
+       402x874 comp, this screen COVERS the viewport — so no one fixed position
+       matches both. It has to be computed per window.
+
+       The constants are the splash's closing orb, measured in its own comp:
+       centre at 50.51% / 49.35% of the frame, diameter 42.87% of its width.
+
+       Worked out ARITHMETICALLY, from the viewport and the two frame sizes —
+       deliberately not by measuring anything. Both the film and this screen's
+       content end up contained and centred in the viewport (see the two-scales
+       note in flow.css: the background covers, .content is counter-scaled back
+       to contain), so each has a known mapping and one converts to the other.
+
+       Measuring was tried and is a trap here: this runs before fit() has
+       transformed the screen, so every box reads half a viewport out, and a
+       retry on requestAnimationFrame does not save it because the very first
+       call already succeeds against the wrong numbers. Arithmetic has no such
+       ordering problem and needs no retry. */
+    var FILM_W = 402, FILM_H = 874, ORB_X = 0.5051, ORB_Y = 0.4935, ORB_D = 0.4287;
+    function place() {
+      var cs = getComputedStyle(document.documentElement);
+      var fw = parseFloat(cs.getPropertyValue('--w')) || 393;
+      var fh = parseFloat(cs.getPropertyValue('--h')) || 852;
+      var ck = Math.min(innerWidth / fw, innerHeight / fh);     // this screen
+      var fk = Math.min(innerWidth / FILM_W, innerHeight / FILM_H); // the film
+      if (!ck || !fk) return;
+      // the splash's closing orb, in viewport pixels
+      var sx = (innerWidth - FILM_W * fk) / 2 + ORB_X * FILM_W * fk;
+      var sy = (innerHeight - FILM_H * fk) / 2 + ORB_Y * FILM_H * fk;
+      var sd = ORB_D * FILM_W * fk;
+      // the same point, in this screen's own coordinates
+      var cx = (sx - (innerWidth - fw * ck) / 2) / ck;
+      var cy = (sy - (innerHeight - fh * ck) / 2) / ck;
+      var size = sd / ck / 0.398;
+      cv.style.left = (cx - size / 2) + 'px';
+      cv.style.top = (cy - size / 2) + 'px';
+      cv.style.width = size + 'px';
+      cv.style.height = size + 'px';
+    }
+    place();
+    addEventListener('resize', place);
+    /* visibility, not display: place() measures the orb every time the window
+       changes, and display:none would take its box away and with it the only
+       reference tying this canvas to the screen's current transform. */
     var hide = function (on) {
-      hidden.forEach(function (el) { el.style.display = on ? 'none' : ''; });
+      hidden.forEach(function (el) { el.style.visibility = on ? 'hidden' : ''; });
     };
     hide(true);
 
