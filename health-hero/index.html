@@ -41,18 +41,7 @@
   }
   #splash.on { display:block; }
   #splash.off { opacity:0; pointer-events:none; }
-  #splash-anim { position:absolute; inset:0; }
-  /* The letterbox, painted as a hole rather than as a sheet.
-
-     Sized to the film's own rect with a huge shadow spread, so the fill lands
-     everywhere EXCEPT where the film draws. That matters once the film starts
-     dissolving its own backdrop: a full-bleed sheet underneath would be
-     dissolving in the same place at the same time, the two would compound, and
-     the film's area would go visibly darker than the bars around it — a band
-     down the middle of the screen for the length of the transition. */
-  #splash-bars { position:absolute; pointer-events:none; display:none; }
-  #splash.bars { background:transparent; }
-  #splash.bars #splash-bars { display:block; }
+  #splash-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
   /* "tap to skip", stated quietly. It appears after a beat: offering the skip
      before anyone has seen what they are skipping is just noise. */
   #splash-skip {
@@ -65,8 +54,7 @@
 </head>
 <body>
 <div id="splash" aria-hidden="true">
-  <div id="splash-anim"></div>
-  <div id="splash-bars"></div>
+  <canvas id="splash-canvas"></canvas>
   <div id="splash-skip">TAP TO SKIP</div>
 </div>
 <iframe class="scr" id="f-game" src="game/index.html" title="Game"></iframe>
@@ -83,8 +71,39 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 /* ---------------------------------------------------------------- splash --
 
    The client's brand animation: the Novo mark, then the HP orb dropping in on
-   a ripple. 5.4s at 24fps, supplied as a .lottie, unpacked here to the JSON
-   and its images so it can be served as plain static files.
+   a ripple. 5.4s at 24fps.
+
+   Played with dotLottie (@lottiefiles/dotlottie-web, WebGL2 build) rather than
+   lottie-web. lottie-web drives this one from JS onto a 2D canvas and it
+   dragged badly: the film is thirteen bitmaps, two of them 4604x4605 and
+   3132x3132, and compositing that per frame in script is the wrong tool.
+   dotLottie hands the whole thing to a Rust/WASM renderer on a GL context.
+
+   It also takes the .lottie AS SHIPPED, rather than unpacking the zip into
+   loose JSON plus an images folder and patching asset paths at load time —
+   fewer moving parts to keep in step with a file the client will send again.
+
+   ── why the handover is a plain cross-fade ────────────────────────────────
+   The film dissolves its own backdrop from f101 and ends transparent, so the
+   obvious move is to let that dissolve reveal the intro. Two things in the
+   file rule it out:
+
+   1. The whole animation is a 1080x1920 precomp scaled to 46% and positioned
+      too HIGH — its bottom edge sits at 799 of the comp's 874 until f92, when
+      it animates down to close the gap. So for most of its length the film
+      does not cover the bottom ~8.5% of its own frame. Anything that relies on
+      the film to paint its own area shows the page through that band.
+
+   2. Fading a backdrop behind a film that is dissolving compounds the two, so
+      the film's area goes visibly darker than the letterbox around it — a band
+      down the middle for the length of the transition.
+
+   Fading the splash as ONE composited layer has neither problem: opacity
+   applies to the whole thing at once, so there is no seam to misalign, no gap
+   to show through and nothing to double up. It starts exactly when the film
+   starts its own dissolve, so the two read as a single move, and it lands on
+   the intro — whose heart orb is in the same place, at the same size, as the
+   film's closing orb.
 
    Three things this deliberately does:
 
@@ -93,11 +112,10 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
      of logo before they can do anything is how a queue game gets abandoned.
      It also auto-advances, so doing nothing still works.
 
-   - It does not hold up the game. The player and its images are fetched AFTER
-     load fires, so the game iframe — which is the slow one, and which the host
-     waits on for 'rw:ready' — gets the connection first. If any of it fails or
-     is slow, dismiss() runs anyway and the flow proceeds as if the splash was
-     never there.
+   - It does not hold up the game. Nothing here is fetched until load fires, so
+     the game iframe — the slow one, and the one the host waits on for
+     'rw:ready' — gets the connection first. Every failure path calls dismiss()
+     and the flow proceeds as if the splash was never there.
 
    - It runs ONCE per page load, not once per run. Coming back from a run must
      never replay it. */
@@ -105,142 +123,87 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   'use strict';
   var box = document.getElementById('splash');
   var skip = document.getElementById('splash-skip');
-  if (!box) return;
+  var canvas = document.getElementById('splash-canvas');
+  if (!box || !canvas) return;
 
+  /* Where the film begins dissolving its own backdrop. MEASURED off the
+     rendered canvas a frame at a time, not read off the timeline: opaque
+     through f101, then dead straight to zero by f111. The cross-fade is
+     matched to that ten-frame window so the two are one movement. */
+  var HANDOVER = 101, FADE_MS = 420;
+
+  var player = null;
   var done = false;
-  function dismiss() {
+  function dismiss(ms) {
     if (done) return;
     done = true;
-    // the splash outlives nothing: drop the resize hook before the node goes,
-    // or it keeps firing for the rest of the session against a dead element
-    removeEventListener('resize', layout);
+    if (player) { try { player.destroy(); } catch (e) {} player = null; }
+    box.style.transitionDuration = (ms || 320) + 'ms';
     box.classList.add('off');
-    setTimeout(function () { box.remove(); bars = null; }, 360);
+    setTimeout(function () { box.remove(); }, (ms || 320) + 60);
   }
-  // Whatever happens, the splash is gone by 9s. A stalled decode on a slow
-  // phone must not leave someone staring at a navy rectangle.
+  // Whatever happens, the splash is gone by 9s. A stall on a slow phone must
+  // not leave someone staring at a navy rectangle.
   var failsafe = setTimeout(dismiss, 9000);
 
   box.classList.add('on');
-  box.addEventListener('pointerdown', dismiss, { passive: true });
+  box.addEventListener('pointerdown', function () { dismiss(200); }, { passive: true });
   setTimeout(function () { if (!done) skip.classList.add('on'); }, 1200);
 
-  /* The film dissolves its OWN backdrop and ends fully transparent: it was
-     authored to hand over by revealing whatever is underneath it.
-
-     These two numbers are MEASURED off the rendered canvas, one frame at a
-     time, not read off the timeline and not guessed. The backdrop is opaque
-     through f101 and then falls dead straight to zero at f111 — 0.90, 0.80,
-     0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0. Ten frames, linear.
-
-     Getting them wrong is visible: the letterbox fades on this same curve, and
-     if the two curves disagree the seam between the film and the bars shows as
-     an edge for the length of the transition. */
-  var FADE_FROM = 101, FADE_TO = 111;
-  var FILM_W = 402, FILM_H = 874;      // the comp's own size
-  var bars = document.getElementById('splash-bars');
-
-  /* Put the bars exactly where the film is not. The film is contained, so its
-     rect is the same one lottie computes for xMidYMid meet. */
-  function layout() {
-    if (!bars) return;
-    var vw = innerWidth, vh = innerHeight;
-    var k = Math.min(vw / FILM_W, vh / FILM_H);
-    var w = FILM_W * k, h = FILM_H * k;
-    bars.style.left = ((vw - w) / 2) + 'px';
-    bars.style.top = ((vh - h) / 2) + 'px';
-    bars.style.width = w + 'px';
-    bars.style.height = h + 'px';
-  }
-  function backdrop(a) {
-    if (!bars) return;
-    bars.style.boxShadow = '0 0 0 9999px rgba(32,38,100,' + a.toFixed(3) + ')';
-  }
-  addEventListener('resize', layout);
-
-  function play(lottie, data) {
-    if (done) return;
-    var anim = lottie.loadAnimation({
-      container: document.getElementById('splash-anim'),
-      renderer: 'canvas',
-      loop: false,
-      autoplay: true,
-      // Handed the parsed JSON rather than a path, because the images were
-      // preloaded from it already and re-fetching it would be a second trip.
-      animationData: data,
-      // The .lottie carries an ABSOLUTE '/images/' in every asset, which
-      // resolves to the domain root and 404s under /prototypes/health-hero/.
-      // assetsPath overrides it; nothing in the client's JSON was rewritten.
-      assetsPath: 'splash/images/',
-      rendererSettings: { preserveAspectRatio: 'xMidYMid meet' }
-    });
-    var swapped = false;
-    anim.addEventListener('enterFrame', function (e) {
-      /* Hand the backdrop over to the bars only once the film is actually
-         drawing. Until then the film's rect is empty, and a transparent
-         container would show the intro through it for a frame. */
-      if (!swapped) {
-        swapped = true;
-        layout();
-        backdrop(1);
-        box.classList.add('bars');
-      }
-      var f = e.currentTime;
-      backdrop(f <= FADE_FROM ? 1
-        : Math.max(0, 1 - (f - FADE_FROM) / (FADE_TO - FADE_FROM)));
-    });
-    anim.addEventListener('complete', dismiss);
-    anim.addEventListener('data_failed', dismiss);
-  }
-
-  /* Decode every frame BEFORE playing.
-
-     The film is 8.8MB across thirteen images, two of them 4604x4605 and
-     3132x3132, and the smoke is ten separate 640x640 frames each held for a
-     single frame at 24fps. Left to decode on first draw, those arrive late and
-     the animation visibly jumps.
-
-     If they are not all ready in time the splash is simply skipped. It is a
-     flourish, and a flourish that makes someone wait is worse than no
-     flourish — this way a slow connection goes straight to the intro instead
-     of watching a navy rectangle. */
+  // ready or not, the splash is never the reason anyone waits
   var READY_BUDGET = 4000;
-  function preload(url) {
-    return new Promise(function (res) {
-      var im = new Image();
-      im.onload = function () { (im.decode ? im.decode() : Promise.resolve()).then(res, res); };
-      im.onerror = res;
-      im.src = url;
-    });
-  }
 
   function begin() {
-    var s = document.createElement('script');
-    s.src = 'splash/lottie.js';
-    s.onerror = dismiss;
-    s.onload = function () {
-      if (done || !window.lottie) return dismiss();
+    import('./splash/dotlottie.js').then(function (m) {
+      if (done) return;
+      var DotLottie = m.DotLottie;
+      // the wasm ships with the site; the library otherwise reaches for a CDN,
+      // which is a hard dependency on the venue's network being friendly
+      DotLottie.setWasmUrl('splash/dotlottie-player.wasm');
+
       clearTimeout(failsafe);
-      // hard stop: ready or not, the splash is never the reason anyone waits
       failsafe = setTimeout(dismiss, READY_BUDGET);
-      fetch('splash/animation.json')
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          var imgs = (data.assets || []).filter(function (a) { return a.p; })
-            .map(function (a) { return 'splash/images/' + a.p; });
-          return Promise.all(imgs.map(preload)).then(function () { return data; });
+
+      return Promise.all([
+        DotLottie.preload(),
+        fetch('splash/splash.lottie').then(function (r) {
+          if (!r.ok) throw new Error('splash ' + r.status);
+          return r.arrayBuffer();
         })
-        .then(function (data) {
-          if (done) return;
-          clearTimeout(failsafe);
-          // everything is decoded, so 5.4s of film plus a margin is the cap
-          failsafe = setTimeout(dismiss, 8000);
-          play(window.lottie, data);
-        })
-        .catch(dismiss);
-    };
-    document.body.appendChild(s);
+      ]).then(function (res) {
+        if (done) return;
+        clearTimeout(failsafe);
+        // wasm up and the film in memory, so 5.4s plus a margin is the cap
+        failsafe = setTimeout(dismiss, 8000);
+        start(DotLottie, res[1]);
+      });
+    }).catch(dismiss);
   }
+
+  function start(DotLottie, buf) {
+    player = new DotLottie({
+      canvas: canvas,
+      data: buf,
+      autoplay: true,
+      loop: false,
+      layout: { fit: 'contain', align: [0.5, 0.5] },
+      renderConfig: {
+        // The canvas is the whole viewport and the film is heavy. A phone
+        // reporting DPR 3 would have this rasterising a 3x surface every
+        // frame, which is where a good part of the budget was going. The game
+        // caps at 2 for the same reason; matching it keeps the two consistent.
+        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        freezeOnOffscreen: true
+      }
+    });
+
+    player.addEventListener('frame', function (e) {
+      if (e.currentFrame >= HANDOVER) dismiss(FADE_MS);
+    });
+    player.addEventListener('complete', function () { dismiss(FADE_MS); });
+    player.addEventListener('loadError', dismiss);
+  }
+
   if (document.readyState === 'complete') begin();
   else addEventListener('load', begin);
 })();
