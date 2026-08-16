@@ -98,10 +98,42 @@
      still ripple, which was a faint wash UNDER the orb; carrying them onto a
      layer that now contains the orb itself washes the orb out. On this sky,
      plus-lighter at 0.25 made the whole thing disappear. */
+  /* Both layouts draw the same centrepiece, but out of different pieces.
+
+       mobile   a faint "ripple effect" PNG + a "heart orbs" SVG on top
+       desktop  three siblings, all exported as "Vector" apart from the glow:
+                the orb, the ripple glow (plus-lighter), and the heart
+
+     Desktop is addressed by node id because every piece there is called
+     "Vector" and nothing else distinguishes them — the same reason play.html
+     keeps an id table for the screens. Mobile is addressed by name, which is
+     stable there. Whichever set is present wins; the other is simply absent.
+
+     The canvas goes in as a SIBLING of the orb, so it inherits the orb's
+     containing block and the orb's own used left/top can be reused directly.
+     That is what keeps one placement calculation working for both. */
+  var ORB_SETS = [
+    { orb: '[data-name^="heart orbs"]',
+      hide: ['[data-name^="ripple effect"]', '[data-name^="heart orbs"]'] },
+    { orb: '[data-node-id="643:3869"]',
+      hide: ['[data-node-id="643:3869"]', '[data-node-id="643:3870"]',
+             '[data-node-id="643:3882"]'] }
+  ];
+
   (function orbLoop() {
-    var still = document.querySelector('[data-name^="ripple effect"]');
-    var orb = document.querySelector('[data-name^="heart orbs"]');
-    if (!still || !orb) return;      // desktop bakes both into one flat image
+    var set = null, orb = null;
+    for (var i = 0; i < ORB_SETS.length && !orb; i++) {
+      orb = document.querySelector(ORB_SETS[i].orb);
+      if (orb) set = ORB_SETS[i];
+    }
+    if (!orb) return;
+
+    var hidden = [];
+    set.hide.forEach(function (sel) {
+      var el = document.querySelector(sel);
+      if (el) hidden.push(el);
+    });
+
     var o = getComputedStyle(orb);
     var cx = parseFloat(o.left) + parseFloat(o.width) / 2;
     var cy = parseFloat(o.top) + parseFloat(o.height) / 2;
@@ -113,8 +145,7 @@
       (cy - size / 2) + 'px;width:' + size + 'px;height:' + size + 'px';
     orb.parentElement.insertBefore(cv, orb);
     var hide = function (on) {
-      still.style.display = on ? 'none' : '';
-      orb.style.display = on ? 'none' : '';
+      hidden.forEach(function (el) { el.style.display = on ? 'none' : ''; });
     };
     hide(true);
 
