@@ -35,6 +35,11 @@
   <iframe class="scr" id="f-board" title="Leaderboard"></iframe>
 
 <script>
+/* The deployed leaderboard. ?api=<url> still overrides it, so the same build
+   can be pointed at a local Worker while developing. */
+window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
+</script>
+<script>
 (function () {
   'use strict';
 
@@ -68,6 +73,18 @@
   var ids = function () { return IDS[mode]; };
 
   /* ---------------------------------------------------------------- board -- */
+
+  /* Where the leaderboard lives.
+     ?api=<url> overrides it, so the same build can be pointed at a local
+     Worker or the deployed one without a rebuild. With no API configured the
+     flow falls back to localStorage exactly as before, so this page keeps
+     working offline and the dev link never depends on the backend being up. */
+  var API = new URLSearchParams(location.search).get('api') ||
+            (window.FLOW_API || '');
+  var ME = 'wizard.me.v1';            // { handle, token } once a name is claimed
+  function me() { try { return JSON.parse(localStorage.getItem(ME) || 'null'); } catch (e) { return null; } }
+  function setMe(v) { try { localStorage.setItem(ME, JSON.stringify(v)); } catch (e) {} }
+
   var KEY = 'wizard.board.v1', MAX = 10;
   function loadBoard() {
     try { var l = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(l) ? l : []; }
@@ -194,6 +211,14 @@
   function showEnded() {
     resetEnded();
     placeInput();
+
+    // Already claimed a name on this device? Submit silently and go straight to
+    // the board — asking again would only offer them a name they cannot have.
+    var known = API && me();
+    if (known && known.handle && known.token) {
+      submit(known.handle, known.token, function () { showBoard(); });
+      return;
+    }
     var n = node(F.ended, ids().score), s = n && n.querySelector('span');
     if (s) s.textContent = run.score.toLocaleString() + ' ';
     show('ended');
@@ -212,10 +237,43 @@
     if (icon && icon.dataset.arrow) icon.src = icon.dataset.arrow;
   }
 
+  /* The two states Figma added for the field. */
+  function fieldState(state, text) {
+    var d = doc(F.ended);
+    nameInput.style.color = state === 'taken' ? '#ff6b6b' : '#fff';
+    if (text !== undefined) nameInput.value = text;
+    var icon = node(F.ended, ids().arrow);
+    icon = icon && icon.querySelector('img');
+    if (!icon) return;
+    icon.dataset.arrow = icon.dataset.arrow || icon.getAttribute('src');
+    icon.src = state === 'ok' ? TICK : icon.dataset.arrow;
+  }
+
   function confirmName() {
     if (confirmed || !run) return;
     var handle = (nameInput.value || '').trim().toUpperCase();
     if (!handle) { nameInput.focus(); return; }
+
+    if (API) {
+      // The server decides. A blocked name and a taken name come back the same
+      // way on purpose — telling someone which words trip the filter turns
+      // finding them into the game.
+      confirmed = true;
+      submit(handle, null, function (res) {
+        if (res && res.ok) {
+          setMe({ handle: handle, token: res.token });
+          fieldState('ok', handle);
+          setTimeout(showBoard, 900);
+        } else {
+          confirmed = false;
+          nameInput.disabled = false;
+          fieldState('taken', 'NOT AVAILABLE');
+          setTimeout(function () { fieldState('idle', ''); nameInput.focus(); }, 1400);
+        }
+      });
+      return;
+    }
+
     confirmed = true;
     nameInput.blur();
     nameInput.disabled = true;
@@ -229,6 +287,19 @@
               seed: run.seed, tape: run.tape, at: run.at };
     saveEntry(entry);
     setTimeout(showBoard, 900);
+  }
+
+  /* Send a run. `token` proves the browser owns the name it is writing to. */
+  function submit(handle, token, done) {
+    fetch(API.replace(/\/$/, '') + '/score', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        handle: handle, token: token, seed: run.seed, tape: run.tape,
+        claimed: { score: run.score, metres: run.metres, orbs: run.orbs }
+      })
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .then(done).catch(function () { done(null); });
   }
 
   /* ------------------------------------------------------ leaderboard -- */
@@ -248,6 +319,7 @@
     setText(F.board, pfxId(spec.pfx + 4), e.orbs + (e.orbs === 1 ? ' ORB' : ' ORBS'));
   }
   function showBoard() {
+    if (API) return showBoardRemote();
     var I = ids(), list = loadBoard();
     for (var i = 0; i < 5; i++) fillRow(rowSpec(i), list[i], i + 1);
     var mineSpec = { pfx: I.mine.base, btnId: I.mine.btn };
@@ -255,6 +327,20 @@
     if (entry && k < 0) fillRow(mineSpec, entry, list.length + 1);
     else fillRow(mineSpec, k >= 0 ? list[k] : null, k + 1);
     show('board');
+  }
+
+  function showBoardRemote() {
+    var known = me();
+    var q = '/top?limit=5' + (known ? '&me=' + encodeURIComponent(known.handle) : '');
+    fetch(API.replace(/\/$/, '') + q)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        for (var i = 0; i < 5; i++) fillRow(rowSpec(i), d.top[i], i + 1);
+        var mineSpec = { pfx: ids().mine.base, btnId: ids().mine.btn };
+        fillRow(mineSpec, d.me, d.me ? d.me.rank : 0);
+        show('board');
+      })
+      .catch(function () { show('board'); });
   }
 
   /* ------------------------------------------------------------- layout -- */
