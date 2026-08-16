@@ -57,18 +57,51 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
      tens in both sets, and the field offsets inside a row are identical, so one
      shape describes both. */
   var IDS = {
-    m: { score:'636:2040', label:'636:2048', face:'636:2047', arrow:'636:2107',
+    m: { score:'636:2040', label:'636:2048', face:'636:2047',
          again:'636:2219', boardAgain:'599:1600',
          rowBtn0:1332, row0:1335, mine:{btn:'599:1387', base:1390} },
-    d: { score:'643:3961', label:'643:3969', face:'643:3968', arrow:null,
+    d: { score:'643:3961', label:'643:3969', face:'643:3968',
          again:'643:4140', boardAgain:'643:4788',
          rowBtn0:4517, row0:4523, mine:{btn:'643:4573', base:4578} }
   };
-  var TICK = 'assets/76e9a71ee3eac772562e5c50f1ca5f0392e539e9.svg';
+  /* The name field's states, as Figma draws them.
+
+     Figma ships each state as its own component instance, so their node ids
+     share nothing — 672:65xx for Name Entry, 672:70xx for Available, 672:73xx
+     for Not Available. But every instance is the same 25 images in the same
+     order, and only six of them differ. That was checked piece by piece: at
+     every one of the 25 positions the three variants have identical viewBoxes
+     and identical path counts, differing only in fill. So a state is applied by
+     INDEX into the button's own images rather than by node id, which is also
+     why one table serves both the mobile and desktop frames even though they
+     were exported separately with different hashes.
+
+       0, 1, 21, 22, 23   the body        navy -> red
+       24                 the frame       arrow -> tick -> cross
+
+     Figma's "Name Entry" and "Name Entered" are the same artwork; only the text
+     differs, and the text is the live input. So there are three sets here, not
+     four.
+
+     Nothing is hard-coded back to navy: the idle state restores each image's
+     own original src. The page's navy (#193074) is not the component's
+     (#031C67) — Figma flattened them against different backgrounds — so
+     painting the component's blue on would be a visible, wrong change. */
+  var FIELD_RED = {
+    0:  'assets/4f8552feb52ee1b70e172e3757530aa9be18f149.svg',
+    1:  'assets/ac548215c99f7305ff2647da4e12a740d5a55725.svg',
+    21: 'assets/50ee16fd777b891e11039913d6bf526a859fb73d.svg',
+    22: 'assets/f496770a841b6aec9c502a88c87574c8f8a15017.svg',
+    23: 'assets/f496770a841b6aec9c502a88c87574c8f8a15017.svg'
+  };
+  var FRAME = 24;
+  var TICK  = 'assets/f59ed275cf1954582e00c80d7cbf286e6f8c05a5.svg';
+  var CROSS = 'assets/2497dd79c775c13b2933b4f5e1779e2585a2e930.svg';
 
   var F = { intro: document.getElementById('f-intro'), game: document.getElementById('f-game'),
             ended: document.getElementById('f-ended'), board: document.getElementById('f-board') };
   var mode = null, current = null, run = null, entry = null, nameInput = null, confirmed = false;
+  var fieldBtn = null, fieldArt = null;   // the field's Button, and its 25 images
   var returning = false;   // this device already owns a name
   var placeInput = function () {};
   var ids = function () { return IDS[mode]; };
@@ -192,8 +225,9 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
       };
       placeInput();
       nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') confirmName(); });
-      var btn = label.closest('[data-name="Button"]');
-      if (btn) btn.addEventListener('click', confirmName);
+      fieldBtn = label.closest('[data-name="Button"]');
+      fieldArt = null;                       // re-read: the two frames differ
+      if (fieldBtn) fieldBtn.addEventListener('click', confirmName);
       var again = node(F.ended, I.again);
       if (again && again.closest('[data-name="Button"]'))
         again.closest('[data-name="Button"]').addEventListener('click', function () { resetEnded(); play(); });
@@ -247,9 +281,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     if (!returning) asNameField();
     if (!nameInput) return;
     nameInput.value = ''; nameInput.disabled = false;
-    var icon = node(F.ended, ids().arrow);
-    icon = icon && icon.querySelector('img');
-    if (icon && icon.dataset.arrow) icon.src = icon.dataset.arrow;
+    fieldState('idle');
   }
 
   /* Re-label the name field as a LEADERBOARD button.
@@ -275,16 +307,33 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     if (label) label.style.visibility = 'hidden';
   }
 
-  /* The two states Figma added for the field. */
+  /* The field's 25 images, with each one's original src remembered.
+     Cached on first use rather than at wire time — the iframe may not have
+     laid out yet, the same race that put the input at 0x0 once already. */
+  function fieldImgs() {
+    if (fieldArt) return fieldArt;
+    if (!fieldBtn) return null;
+    var imgs = fieldBtn.querySelectorAll('img');
+    // If a re-export ever changes the piece count, do nothing rather than
+    // paint red onto the wrong shapes.
+    if (imgs.length !== 25) return null;
+    fieldArt = [].map.call(imgs, function (im) {
+      return { el: im, src: im.getAttribute('src') };
+    });
+    return fieldArt;
+  }
+
+  /* Apply one of Figma's three field states. */
   function fieldState(state, text) {
-    var d = doc(F.ended);
-    nameInput.style.color = state === 'taken' ? '#ff6b6b' : '#fff';
-    if (text !== undefined) nameInput.value = text;
-    var icon = node(F.ended, ids().arrow);
-    icon = icon && icon.querySelector('img');
-    if (!icon) return;
-    icon.dataset.arrow = icon.dataset.arrow || icon.getAttribute('src');
-    icon.src = state === 'ok' ? TICK : icon.dataset.arrow;
+    if (text !== undefined && nameInput) nameInput.value = text;
+    var art = fieldImgs();
+    if (!art) return;
+    art.forEach(function (a) { a.el.src = a.src; });     // Figma's default first
+    if (state === 'ok') art[FRAME].el.src = TICK;
+    if (state === 'taken') {
+      for (var i in FIELD_RED) art[i].el.src = FIELD_RED[i];
+      art[FRAME].el.src = CROSS;
+    }
   }
 
   function confirmName() {
@@ -316,12 +365,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     confirmed = true;
     nameInput.blur();
     nameInput.disabled = true;
-    // Mobile swaps one asset for the tick. The desktop frames re-export every
-    // button piece between the two states, so there is no single swap to make —
-    // the confirmed state there is the name in white, without the tick yet.
-    var icon = node(F.ended, ids().arrow);
-    icon = icon && icon.querySelector('img');
-    if (icon) { icon.dataset.arrow = icon.dataset.arrow || icon.getAttribute('src'); icon.src = TICK; }
+    fieldState('ok');
     entry = { handle: handle, score: run.score, metres: run.metres, orbs: run.orbs,
               seed: run.seed, tape: run.tape, at: run.at };
     saveEntry(entry);
