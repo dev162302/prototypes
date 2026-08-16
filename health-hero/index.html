@@ -126,11 +126,19 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   var canvas = document.getElementById('splash-canvas');
   if (!box || !canvas) return;
 
-  /* Where the film begins dissolving its own backdrop. MEASURED off the
-     rendered canvas a frame at a time, not read off the timeline: opaque
-     through f101, then dead straight to zero by f111. The cross-fade is
-     matched to that ten-frame window so the two are one movement. */
-  var HANDOVER = 101, FADE_MS = 420;
+  /* The film plays IN FULL — all 130 frames, 5.417s — and the cross-fade
+     starts only once it is over.
+
+     An earlier version started the fade at f101, where the film begins
+     dissolving its own backdrop, on the assumption that the tail was a static
+     hold being covered anyway. That was wrong, and checking it frame by frame
+     is what showed it: between f101 and f126 the orb is still travelling
+     across the frame. It was cutting 25 frames of live movement.
+
+     What IS a static hold is f126-f129, which are pixel-identical, and the
+     designer's own mp4 ends the same way — orb, still, for its last dozen
+     frames. So the ending is a held beat by design, and it now plays. */
+  var FADE_MS = 420;
 
   var player = null;
   var done = false;
@@ -173,8 +181,12 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
       ]).then(function (res) {
         if (done) return;
         clearTimeout(failsafe);
-        // wasm up and the film in memory, so 5.4s plus a margin is the cap
-        failsafe = setTimeout(dismiss, 8000);
+        /* The film is 5.417s and the fade adds 0.42s, so the backstop has to
+           clear 5.84s by enough that a struggling device is never cut off by
+           OUR timer — that is the same mistake as trimming the tail, just
+           arriving from a different direction. 10s leaves four seconds of
+           margin and still rescues a genuinely stuck renderer. */
+        failsafe = setTimeout(dismiss, 10000);
         start(DotLottie, res[1]);
       });
     }).catch(dismiss);
@@ -197,9 +209,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
       }
     });
 
-    player.addEventListener('frame', function (e) {
-      if (e.currentFrame >= HANDOVER) dismiss(FADE_MS);
-    });
+    // the film runs to its own end; nothing cuts it short
     player.addEventListener('complete', function () { dismiss(FADE_MS); });
     player.addEventListener('loadError', dismiss);
   }
