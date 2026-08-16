@@ -26,9 +26,37 @@
     transition:opacity .18s linear;
   }
   .scr.on { visibility:visible; opacity:1; pointer-events:auto; }
+
+  /* The brand splash.
+
+     Sits over everything on first load and takes itself away. #202664 is the
+     animation's own solid, so the letterbox on any viewport that is not 402x874
+     is the same colour as the film and reads as one field rather than as bars.
+
+     The animation is portrait; it is CONTAINED rather than covered, because the
+     Novo mark is in it and cropping a logo is not a thing to do. */
+  #splash {
+    position:fixed; inset:0; z-index:10; background:#202664;
+    display:none; opacity:1; transition:opacity .32s linear;
+  }
+  #splash.on { display:block; }
+  #splash.off { opacity:0; pointer-events:none; }
+  #splash-anim { position:absolute; inset:0; }
+  /* "tap to skip", stated quietly. It appears after a beat: offering the skip
+     before anyone has seen what they are skipping is just noise. */
+  #splash-skip {
+    position:absolute; left:0; right:0; bottom:6%;
+    text-align:center; font:600 10px/1 'Ari-W9500','Apis',Helvetica,Arial,sans-serif;
+    letter-spacing:.34em; color:#fff; opacity:0; transition:opacity .5s linear;
+  }
+  #splash-skip.on { opacity:.5; }
 </style>
 </head>
 <body>
+<div id="splash" aria-hidden="true">
+  <div id="splash-anim"></div>
+  <div id="splash-skip">TAP TO SKIP</div>
+</div>
 <iframe class="scr" id="f-game" src="game/index.html" title="Game"></iframe>
   <iframe class="scr" id="f-intro" title="Intro"></iframe>
   <iframe class="scr" id="f-ended" title="Run ended"></iframe>
@@ -38,6 +66,79 @@
 /* The deployed leaderboard. ?api=<url> still overrides it, so the same build
    can be pointed at a local Worker while developing. */
 window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
+</script>
+<script>
+/* ---------------------------------------------------------------- splash --
+
+   The client's brand animation: the Novo mark, then the HP orb dropping in on
+   a ripple. 5.4s at 24fps, supplied as a .lottie, unpacked here to the JSON
+   and its images so it can be served as plain static files.
+
+   Three things this deliberately does:
+
+   - It is SKIPPABLE, and says so. This is a QR code on a show floor and the
+     person scanning it is standing in a queue. Making them watch five seconds
+     of logo before they can do anything is how a queue game gets abandoned.
+     It also auto-advances, so doing nothing still works.
+
+   - It does not hold up the game. The player and its images are fetched AFTER
+     load fires, so the game iframe — which is the slow one, and which the host
+     waits on for 'rw:ready' — gets the connection first. If any of it fails or
+     is slow, dismiss() runs anyway and the flow proceeds as if the splash was
+     never there.
+
+   - It runs ONCE per page load, not once per run. Coming back from a run must
+     never replay it. */
+(function () {
+  'use strict';
+  var box = document.getElementById('splash');
+  var skip = document.getElementById('splash-skip');
+  if (!box) return;
+
+  var done = false;
+  function dismiss() {
+    if (done) return;
+    done = true;
+    box.classList.add('off');
+    setTimeout(function () { box.remove(); }, 360);
+  }
+  // Whatever happens, the splash is gone by 9s. A stalled decode on a slow
+  // phone must not leave someone staring at a navy rectangle.
+  var failsafe = setTimeout(dismiss, 9000);
+
+  box.classList.add('on');
+  box.addEventListener('pointerdown', dismiss, { passive: true });
+  setTimeout(function () { if (!done) skip.classList.add('on'); }, 1200);
+
+  function begin() {
+    var s = document.createElement('script');
+    s.src = 'splash/lottie.js';
+    s.onerror = dismiss;
+    s.onload = function () {
+      if (done || !window.lottie) return dismiss();
+      var anim = window.lottie.loadAnimation({
+        container: document.getElementById('splash-anim'),
+        renderer: 'canvas',
+        loop: false,
+        autoplay: true,
+        path: 'splash/animation.json',
+        // The .lottie carries an ABSOLUTE '/images/' in every asset, which
+        // resolves to the domain root and 404s under /prototypes/health-hero/.
+        // assetsPath overrides it; nothing in the JSON had to be rewritten.
+        assetsPath: 'splash/images/',
+        rendererSettings: { preserveAspectRatio: 'xMidYMid meet' }
+      });
+      anim.addEventListener('complete', dismiss);
+      anim.addEventListener('data_failed', dismiss);
+      // it played, so the failsafe can go
+      anim.addEventListener('DOMLoaded', function () { clearTimeout(failsafe);
+        setTimeout(dismiss, 9000); });
+    };
+    document.body.appendChild(s);
+  }
+  if (document.readyState === 'complete') begin();
+  else addEventListener('load', begin);
+})();
 </script>
 <script>
 (function () {
