@@ -804,6 +804,12 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   function asNameFieldArt() {
     var field = node(F.ended, ids().fieldBtn), again = node(F.ended, ids().againBtn);
     if (field) field.parentElement.style.display = '';
+    /* Tag the field for its interaction states. flow.js tags the CTAs by their
+       label, which cannot work here: this button's text changes as you use it
+       — ENTER NAME, then the handle, then NOT AVAILABLE. The host is the only
+       side that knows which node it is, so it marks it. */
+    var fb = field && field.closest('[data-name="Button"]');
+    if (fb) fb.setAttribute('data-cta', 'field');
     var clone = again && again.parentElement.querySelector('[data-as="lb"]');
     if (clone) clone.style.display = 'none';
   }

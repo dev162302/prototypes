@@ -173,3 +173,52 @@ body.desk .left-in   { position: absolute; left: 0; top: 0; width: 1920px; heigh
   text-box-trim: inherit;
   text-box-edge: inherit;
 }
+
+/* ── button interaction states ───────────────────────────────────────────
+   Figma draws DEFAULT / HOVER / PRESSED for every button. One button's artwork
+   is a stack of 13-14 flat-fill SVG slices, so there is no single element to
+   recolour and CSS cannot reach inside an <img>.
+
+   The two button families need OPPOSITE treatments, which is why there are two
+   rules rather than one:
+
+     Only tagged elements are touched. Figma names the leaderboard ROWS
+     "Button" as well, and they are not clickable -- an unscoped rule gave them
+     a pointer cursor and hover feedback, which promises something that is not
+     there.
+
+     primary   the blue plate (#296AD4). Lightens on hover, darkens pressed --
+               a brightness filter moves every slice at once, and because the
+               fills are flat it reads as a fill swap rather than a wash.
+
+     secondary the near-white plates (#E7E9F0). brightness() is useless here:
+               white cannot get brighter, and a filter cannot introduce the
+               blue the frame asks for. These tint instead, via a multiply
+               overlay -- which moves the plate and leaves the dark label dark,
+               since multiplying a navy glyph by a pale colour barely shifts it.
+
+   hover is gated behind (hover: hover). On a touch screen :hover latches after
+   a tap and stays until you touch something else, so an ungated rule would
+   leave the last-tapped button stuck in its hover state -- the opposite of
+   feedback. :active is the one that matters on a phone: a tap with no response
+   reads as a dead button, and these are the primary CTAs.
+
+   No transition: this is pixel art, and the frames snap. */
+[data-cta] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+@media (hover: hover) {
+  [data-cta="primary"]:hover { filter: brightness(1.10); }
+  [data-cta="field"]:hover { filter: brightness(1.10); }
+  [data-cta="secondary"]:hover::after { background: #C7D8F5; }
+}
+[data-cta="primary"]:active { filter: brightness(0.84); }
+[data-cta="field"]:active { filter: brightness(0.84); }
+[data-cta="secondary"]:active::after { background: #C9CDD6; }
+
+/* the overlay itself; the Button nodes already carry position:relative, and
+   absolute children are out of flow so the inline-grid is untouched */
+[data-cta="secondary"]:hover::after,
+[data-cta="secondary"]:active::after {
+  content: ''; position: absolute; inset: 0;
+  pointer-events: none; mix-blend-mode: multiply;
+}

@@ -64,6 +64,23 @@
   }
   wireLinks();
 
+  /* Tag each CTA with its family, so the interaction states in flow.css can
+     treat them differently — the blue plate lightens on hover, the white ones
+     tint blue, which are opposite moves in luminance.
+
+     By LABEL, like wireLinks above, and for the same reason: node ids change
+     whenever a screen is re-exported and the wording does not. Anything not
+     matched here — the name field, most obviously — is left untagged and falls
+     back to the plain brightness rule, which suits its navy and red plates. */
+  var PRIMARY = /^(learn more|find out more)$/;
+  var SECONDARY = /^(play again|leaderboard)$/;
+  [].forEach.call(document.querySelectorAll('[data-name="Button"]'), function (b) {
+    var t = (b.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()
+              .replace(/[.↻↗\s]+$/, '');
+    if (PRIMARY.test(t)) b.setAttribute('data-cta', 'primary');
+    else if (SECONDARY.test(t)) b.setAttribute('data-cta', 'secondary');
+  });
+
   /* Give mixed-size lines something real to trim against.
 
      Figma writes them as a font-size:0 wrapper with sized spans inside —
