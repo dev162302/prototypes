@@ -5,6 +5,36 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Novo Health Hero — play</title>
 <meta name="robots" content="noindex,nofollow">
+<script>
+/* Every opening is a new player.
+
+   This runs FIRST, before anything else on the page — before the iframes are
+   even parsed, which is the point. The game is a separate same-origin build
+   with its own two keys, and its bundle would otherwise be free to read what
+   the last person left behind. Putting this in <head> is what guarantees the
+   wipe happens before any of that can run, rather than merely usually.
+
+   Storage still works normally for the length of a visit, so claiming a name,
+   playing again and opening the leaderboard all behave as before. What does not
+   survive is the visit itself: reload, reopen, or a fresh scan of the QR code
+   and the device remembers nothing.
+
+   Note this deliberately gives up name RECLAIM. The token that proves a device
+   owns its handle is gone on reopen too, so someone returning cannot take their
+   old name back — the server will report it taken and they pick another. That
+   is the accepted trade for never showing one person another person's identity.
+
+   The keys, and who writes them:
+     wizard.me.v1      this page   the claimed handle, and its ownership token
+     wizard.board.v1   this page
+                       and the game   offline fallback board
+     wizard.handle     the game    an auto-generated name */
+(function () {
+  ['wizard.me.v1', 'wizard.board.v1', 'wizard.handle'].forEach(function (k) {
+    try { localStorage.removeItem(k); } catch (e) {}
+  });
+})();
+</script>
 <style>
   /* The whole flow on one stage: intro -> game -> run ended -> leaderboard.
      Each screen stays in its own file exactly as transcribed from Figma; this
@@ -469,6 +499,9 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   function setMe(v) { try { localStorage.setItem(ME, JSON.stringify(v)); } catch (e) {} }
 
   var KEY = 'wizard.board.v1', MAX = 10;
+
+  /* Nothing to reset here: the wipe in <head> already runs on every opening,
+     so a visit always starts clean. See the note there. */
   function loadBoard() {
     try { var l = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(l) ? l : []; }
     catch (e) { return []; }
