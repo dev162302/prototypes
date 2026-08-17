@@ -57,14 +57,17 @@
       }
       /* The blue haze at the foot of the screen — the frame's own layer, named
          "Rectangle 240649107" and drawn in BOTH the desktop and mobile frames.
-         It is what stops the footer reading as white text scattered over bare
-         rock: the wash flattens the cliff's texture to an even blue, and the
-         lockup and legal line sit on that rather than on the noise.
+
+         It was added to carry the footer text, which has since been taken off
+         the game screen at the client's request. It stays because it is part of
+         the background as drawn, not scaffolding for the text: it settles the
+         cliff into the cloud bank instead of letting the rock end at a hard
+         edge. Worth being clear that its original reason is gone, so nobody
+         removes it later expecting only a text scrim to disappear.
 
          It is NOT the same thing as FG Fog. FG Fog is the horizon haze — 13%
          lighten, atmosphere only, and measurably worth about 6 levels at the
-         bottom of the screen, which is nowhere near enough to read text
-         against. The two are separate layers in the frame and both belong.
+         bottom of the screen. The two are separate layers and both belong.
 
          The stops are the frame's, per breakpoint, and they differ:
 
@@ -72,8 +75,7 @@
            portrait    rgba(39,107,222,0) 67.254%  ->  rgba(130,171,239,.96) 98.768%
 
          Landscape's far stop is past the bottom edge, so the wash arrives at
-         ~62% there; portrait's lands just inside it, which is why the phone —
-         where the lockup AND the legal line are both at the bottom — gets the
+         ~62% there; portrait's lands just inside it, so the phone gets the
          stronger cover. That is the design, not an accident of the numbers.
 
          Percentages of the VIEWPORT, not of a --k-scaled frame box. The wash
@@ -424,57 +426,6 @@
         letter-spacing: 0.16em;
         margin-top: 48px;
       }
-      /* ── the lockup and the legal line ───────────────────────────────────
-         PORTRAIT first, in plain px. The landscape block further down re-lays
-         both onto the 1920x1080 frame, and its --k lives only inside that
-         query: a calc() against an undefined custom property is invalid and
-         drops the whole declaration, which is exactly how a shared rule would
-         break the phone.
-
-         The phone cannot use the frame's placement. There the lockup is top
-         centre, but on a 393px screen the two stone panels leave only 99px of
-         clear middle and the lockup is 181 — so it sits just BELOW them
-         instead, which is clear of the panels and of #low at 20%. Its width is
-         the campaign's own mobile lockup size, taken from the intro screen
-         rather than invented. */
-      #lockup {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        /* Portrait frame: Layer_1 at (105.74, 741), 181.46 x 27.93 on 393x852.
-           Anchored from the BOTTOM rather than at top:741 — the frame is one
-           phone, and every other phone is a different height; measuring from
-           the bottom keeps the designed gap on all of them.
-           852 - (741 + 27.93) = 83. */
-        bottom: calc(83px + env(safe-area-inset-bottom));
-        width: 181.464px;
-      }
-      #disclaimer {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        /* Portrait frame: 292 x 20 at (51, 792) on 393x852, Apis Regular 8px,
-           tracking -0.16, leading 1.25, and its own shadow — the portrait and
-           landscape frames do NOT share these; each was set separately.
-           852 - (792 + 20) = 40. */
-        bottom: calc(40px + env(safe-area-inset-bottom));
-        width: 292px;
-        text-align: center;
-        font-family: 'Apis', 'Ari-W9500', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 8px;
-        letter-spacing: -0.16px;
-        line-height: 1.25;
-        color: #fff;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.33);
-      }
-      #disclaimer a {
-        color: inherit;
-        font-weight: 700;
-        text-decoration: underline;
-        text-underline-position: from-font;
-        pointer-events: auto;
-      }
-
       #ranksBtn {
         position: absolute;
         left: 50%;
@@ -745,8 +696,8 @@
       /* ── landscape: the designer's frame, reproduced ─────────────────────
          Figma draws the game screen at 1920x1080, so --k is one frame pixel
          and every number below is that frame's own. From min(), not width
-         alone: on a window shorter than 16:9 the lockup would otherwise grow
-         until it crowded the play area.
+         alone: on a window shorter than 16:9 the HUD panels would otherwise
+         grow until they crowded the play area.
 
          Scoped to this query on purpose. --k is defined nowhere else, so the
          portrait rules above cannot accidentally depend on it. */
@@ -908,29 +859,6 @@
            filled pip with a brand-blue heart rather than an invented colour */
         .panel .pip.bonus::after { background: #011864; }
 
-        /* frame: Layer_1 at (750.3, 68), 418.7 x 64.4 */
-        #lockup {
-          top: calc(68 * var(--k));
-          bottom: auto;
-          width: calc(418.7 * var(--k));
-        }
-        /* frame: 382 x 36 at (769, 1007), Apis Regular 13.37px.
-
-           Anchored from the BOTTOM, like the portrait rule, not at top:1007k.
-           --k is min(vw/1920, vh/1080), so on any window that is not 16:9 it
-           is bound by the SHORTER side and the frame ends before the window
-           does. On a 2940x1846 screen that left the line 248px up from the
-           footer. Holding the frame's own bottom gap instead — 1080-(1007+36)
-           = 37 — keeps it on the footer at every aspect. */
-        #disclaimer {
-          top: auto;
-          bottom: calc(37 * var(--k));
-          width: calc(382 * var(--k));
-          font-size: calc(13.37 * var(--k));
-          letter-spacing: calc(-0.2674 * var(--k));
-          line-height: 1.36;
-          text-shadow: 0 -1px calc(15.3 * var(--k)) rgba(3, 28, 103, 0.4);
-        }
         #ranksBtn { bottom: calc(1080 * var(--k) * 0.085); }
       }
     </style>
@@ -954,16 +882,11 @@
           <div class="sub2" id="capnote">MAX 4</div>
         </div>
       </div>
-      <!-- Always on the game screen, per the designer's frame: the brand lockup
-           and the legal line. Neither is a game element and neither reacts to
-           play; they are simply always there. -->
-      <img id="lockup" src="art/lockup.webp" alt="novo nordisk — ueber-gewicht.de">
-      <div id="disclaimer">
-        <div>This experience is brought to you by Novo Nordisk.</div>
-        <div>For information on Privacy Policy &amp; Legal Disclaimer,
-          <a href="https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html"
-             target="_blank" rel="noopener noreferrer">Click here</a></div>
-      </div>
+      <!-- No brand lockup and no legal line here, at the client's request:
+           both belong to the screens either side of a run, not to the run
+           itself. The frame draws them on the game screen; this deliberately
+           does not. They are unchanged on the intro, the run-ended screen and
+           the leaderboard, which is where the disclaimer link now lives. -->
       <div id="low">LOW ON JUMPS</div>
       <div id="bonus"><b>BONUS</b><span>+1 Jump</span></div>
       <div id="ranksBtn">RANKS</div>
