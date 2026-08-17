@@ -195,15 +195,30 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
      computed, so this holds for both frame sets without a second table of
      constants. If it cannot be read, nothing is applied and the handover is the
      plain cross-fade it was before. */
-  var ORB_D = 176.4 / 874;    // film's closing orb, as a fraction of viewport height
-  var ORB_Y = 433.6 / 874;
+  var ORB_D = 176.4 / 874;    // the film's closing orb, as a fraction of COMP height
+  var ORB_Y = 433.6 / 874;    // and where its centre sits down that height
   var ORB_F = 0.398;          // the intro orb's share of its canvas, as flow.js draws it
   var ORB_PHASE = 2;          // loop frame whose ripple ring matches the film's ending
+  var COMP_W = 828, COMP_H = 874;   // the .lottie's own comp, as the designer set it
 
   /* Place the film so that it ENDS where the intro's orb already is.
 
-     Static: no transition, applied once, as early as the destination can be
-     read. Nothing animates, so there is nothing to notice. */
+     Done by SIZING AND POSITIONING THE CANVAS, not by transforming it. That
+     distinction is the whole bug this replaces: a canvas is a drawing surface,
+     so scaling the element shrinks the surface too. At scale 0.79 on a phone
+     the film was being rendered into a 311x674 box inside a 393x852 screen —
+     the comp is ~638 wide at that scale, so more than half its width was never
+     drawn, and the ripple ended on hard edges where the canvas stopped.
+
+     Sizing instead costs nothing, because the layout is fit-height: the film's
+     scale follows the canvas HEIGHT alone. So the height is chosen to make the
+     orb exactly the size of the intro's, and the width is then set to whatever
+     the comp needs at that height — wider than the screen if need be. Nothing
+     is clipped by us; the only bound left is the comp's own artboard, which is
+     the designer's.
+
+     Still static, still applied once, as early as the destination can be read.
+     Nothing animates, so there is nothing to notice. */
   var placed = false;
 
   function place() {
@@ -219,15 +234,17 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     var toX = fr.left + r.left + r.width / 2;
     var toY = fr.top + r.top + r.height / 2;
     var toD = r.width * ORB_F;
+    if (!(toD > 0)) return false;
 
-    var vw = innerWidth, vh = innerHeight;
-    var fromX = vw / 2, fromY = vh * ORB_Y, fromD = vh * ORB_D;
+    var h = toD / ORB_D;              // canvas height that renders the orb at toD
+    var w = COMP_W * h / COMP_H;      // the comp's full width at that height
 
-    // the canvas is inset:0, so its own box IS the viewport and the orb's
-    // viewport coordinates can be used as the transform origin directly
-    canvas.style.transformOrigin = fromX + 'px ' + fromY + 'px';
-    canvas.style.transform = 'translate(' + (toX - fromX) + 'px,' +
-      (toY - fromY) + 'px) scale(' + (toD / fromD) + ')';
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.style.left = (toX - w / 2) + 'px';
+    canvas.style.top = (toY - h * ORB_Y) + 'px';
+    canvas.style.right = 'auto';
+    canvas.style.bottom = 'auto';
     placed = true;
     return true;
   }
