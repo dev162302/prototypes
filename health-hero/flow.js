@@ -35,9 +35,15 @@
      target=_blank keeps the run alive behind them, and rel=noopener is
      mandatory with it — without it the opened page can reach back through
      window.opener. */
+  /* Both CTA labels are listed on purpose. The leaderboard's button was renamed
+     to FIND OUT MORE at the client's request; the run-ended screens still say
+     Learn More. Matching on the label is what makes this survive re-exports —
+     and it is also why renaming a button silently breaks its link unless the
+     new wording is added here. That is exactly how FIND OUT MORE shipped dead. */
   var LINKS = [
     ['click here', 'https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html'],
-    ['learn more', 'https://www.ueber-gewicht.de/']
+    ['learn more', 'https://www.ueber-gewicht.de/'],
+    ['find out more', 'https://www.ueber-gewicht.de/']
   ];
   function wireLinks() {
     var norm = function (s) { return (s || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/\.$/, ''); };
