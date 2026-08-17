@@ -435,10 +435,12 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   var IDS = {
     m: { score:'636:2040', label:'636:2048', face:'636:2047',
          again:'636:2219', boardAgain:'599:1600', scene:'636:1992',
+         boardScene:'599:1282',
          fieldBtn:'636:2044', againBtn:'636:2131', lbHead:'636:2043',
          rowBtn0:1332, row0:1335, mine:{btn:'599:1387', base:1390} },
     d: { score:'643:3961', label:'643:3969', face:'643:3968',
          again:'643:4140', boardAgain:'643:4788', scene:'643:3954',
+         boardScene:'643:4510',
          fieldBtn:'643:3965', againBtn:'643:4052', lbHead:'643:3964',
          rowBtn0:4517, row0:4523, mine:{btn:'643:4573', base:4578} }
   };
@@ -635,8 +637,15 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 
      Everything is restored if there is no shot, because the same iframe is
      reused for every run and a stale backdrop is worse than the stock art. */
-  function paintScene() {
-    var el = node(F.ended, ids().scene);
+  /* The leaderboard carries the SAME backdrop node as the ended screen — same
+     concept art, same oversized box, same offsets, just a different id
+     (599:1282 / 643:4510). It was being left on the stock art while the ended
+     screen behind it showed the run, so the picture changed under you on the
+     way to the board. One function serves both; only the frame and the id
+     differ. */
+  function paintScene(f, id) {
+    f = f || F.ended;
+    var el = node(f, id || ids().scene);
     if (!el) return;
     var img = el.querySelector('img');
     if (!img) return;
@@ -939,6 +948,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     var k = indexOfEntry(list, entry);
     if (entry && k < 0) fillRow(mineSpec, entry, list.length + 1);
     else fillRow(mineSpec, k >= 0 ? list[k] : null, k + 1);
+    paintScene(F.board, I.boardScene);
     show('board');
   }
 
@@ -951,9 +961,13 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
         for (var i = 0; i < 5; i++) fillRow(rowSpec(i), d.top[i], i + 1);
         var mineSpec = { pfx: ids().mine.base, btnId: ids().mine.btn };
         fillRow(mineSpec, d.me, d.me ? d.me.rank : 0);
+        paintScene(F.board, ids().boardScene);
         show('board');
       })
-      .catch(function () { show('board'); });
+      .catch(function () {
+        paintScene(F.board, ids().boardScene);
+        show('board');
+      });
   }
 
   /* ------------------------------------------------------------- layout -- */

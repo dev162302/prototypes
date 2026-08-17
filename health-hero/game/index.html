@@ -55,6 +55,43 @@
         height: 100%;
         display: block;
       }
+      /* The blue haze at the foot of the screen — the frame's own layer, named
+         "Rectangle 240649107" and drawn in BOTH the desktop and mobile frames.
+         It is what stops the footer reading as white text scattered over bare
+         rock: the wash flattens the cliff's texture to an even blue, and the
+         lockup and legal line sit on that rather than on the noise.
+
+         It is NOT the same thing as FG Fog. FG Fog is the horizon haze — 13%
+         lighten, atmosphere only, and measurably worth about 6 levels at the
+         bottom of the screen, which is nowhere near enough to read text
+         against. The two are separate layers in the frame and both belong.
+
+         The stops are the frame's, per breakpoint, and they differ:
+
+           landscape   rgba(39,107,222,0) 73.777%  ->  rgba(130,171,239,.96) 114.22%
+           portrait    rgba(39,107,222,0) 67.254%  ->  rgba(130,171,239,.96) 98.768%
+
+         Landscape's far stop is past the bottom edge, so the wash arrives at
+         ~62% there; portrait's lands just inside it, which is why the phone —
+         where the lockup AND the legal line are both at the bottom — gets the
+         stronger cover. That is the design, not an accident of the numbers.
+
+         Percentages of the VIEWPORT, not of a --k-scaled frame box. The wash
+         has to meet the bottom edge of whatever screen it is on; pinning it to
+         frame units would float it clear of the edge on any window that is not
+         16:9 and undo the whole point.
+
+         The hue is constant across the ramp: CSS interpolates gradients with
+         premultiplied alpha, so the transparent stop being a different blue
+         does not drag the colour — only the alpha moves. */
+      #haze {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        background: linear-gradient(180deg,
+          rgba(39, 107, 222, 0) 67.254%, rgba(130, 171, 239, 0.96) 98.768%);
+      }
       #ui {
         position: fixed;
         inset: 0;
@@ -723,6 +760,12 @@
       @media (min-width: 768px) and (min-aspect-ratio: 1 / 1) {
         #ui { --k: min(100vw / 1920, 100vh / 1080); }
 
+        /* the landscape frame's own stops for the haze — see the note above */
+        #haze {
+          background: linear-gradient(180deg,
+            rgba(39, 107, 222, 0) 73.777%, rgba(130, 171, 239, 0.96) 114.22%);
+        }
+
         /* frame: FG Fog at (0, 119), 1920 x 1280, object-cover, lighten, 13%.
 
            The image is 1536x1024 and the box 1920x1280 — both 1.5, so cover is
@@ -891,11 +934,12 @@
         #ranksBtn { bottom: calc(1080 * var(--k) * 0.085); }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-ByKgdOxJ.js"></script>
+    <script type="module" crossorigin src="./assets/index-cUf9ZP_B.js"></script>
   </head>
   <body>
-    <!-- The frame's FG Fog. Over the world, under the HUD — which is where
-         Figma has it: above the background and the terrain, below the panels. -->
+    <!-- The frame's blue haze, then its FG Fog. Both sit over the world and
+         under the HUD, and in this order: Figma stacks FG Fog above the haze. -->
+    <div id="haze"></div>
     <img id="fog" src="art/fog.webp" alt="">
     <div id="ui">
       <div class="hud">
