@@ -160,6 +160,32 @@
       });
       // if it cannot play, put the stills back rather than leaving a hole
       p.addEventListener('loadError', function () { cv.remove(); hide(false); });
+
+      /* The orb is not just a pulse — it carries a ripple ring that expands out
+         of it on a 32-frame loop. This starts as soon as the intro loads, which
+         is several seconds before the splash actually hands over, so by then it
+         is at an arbitrary point in its cycle: the film ends with no ring, and
+         whatever arc the loop happens to be mid-way through appears out of
+         nowhere at the cut. Matching the orb's position and size does not help
+         with that, because it is not the orb that is mismatched.
+
+         So the host rewinds the loop as the handover begins. Both sides are
+         then ring-free at the moment they overlap most, and the ring grows in
+         afterwards as its own beat rather than arriving as a jump. */
+      window.__orb = p;   // handle for measuring the loop frame by frame
+      window.__orbResync = function (frame, holdMs) {
+        try {
+          /* Pinned, not just rewound. The loop runs at 24fps, so a 420ms
+             dissolve advances it ten frames — far enough for the ring to swing
+             back out of agreement while the splash is still partly visible.
+             Holding the phase for the length of the dissolve keeps both sides
+             identical the whole way across, and the ripple resumes once there
+             is nothing left to disagree with. */
+          p.setFrame(frame || 0);
+          p.pause();
+          setTimeout(function () { try { p.play(); } catch (e) {} }, holdMs || 0);
+        } catch (e) {}
+      };
     }).catch(function () { cv.remove(); hide(false); });
   })();
 

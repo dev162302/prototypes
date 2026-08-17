@@ -36,11 +36,17 @@
      The animation is portrait; it is CONTAINED rather than covered, because the
      Novo mark is in it and cropping a logo is not a thing to do. */
   #splash {
-    position:fixed; inset:0; z-index:10; background:#202664;
+    position:fixed; inset:0; z-index:10;
     display:none; opacity:1; transition:opacity .32s linear;
   }
   #splash.on { display:block; }
   #splash.off { opacity:0; pointer-events:none; }
+  /* The navy is its own layer rather than the box's background, because the
+     canvas gets a transform on the way out (see the handover note below) and
+     the field it sits on must NOT come with it — a translated background
+     uncovers a band at one edge. Opacity still lives on the parent, so the
+     whole group still fades as one composited layer. */
+  #splash-bg { position:absolute; inset:0; background:#202664; }
   #splash-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
   /* "tap to skip", stated quietly. It appears after a beat: offering the skip
      before anyone has seen what they are skipping is just noise. */
@@ -54,6 +60,7 @@
 </head>
 <body>
 <div id="splash" aria-hidden="true">
+  <div id="splash-bg"></div>
   <canvas id="splash-canvas"></canvas>
   <div id="splash-skip">TAP TO SKIP</div>
 </div>
@@ -142,13 +149,158 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 
   var player = null;
   var done = false;
-  function dismiss(ms) {
+
+  /* ── the handover ────────────────────────────────────────────────────────
+     The film's closing orb and the intro's pulsing one do NOT land in the same
+     place, and it is worth being precise about why, because the sizes look
+     close enough to blame on rounding and they are not.
+
+     The two are fitted by different rules:
+
+       splash   fit-height on a 497x874 comp    -> orb d = 176.4*vh/874
+                                                   orb cy = 433.6*vh/874
+       intro    a 1920x1080 frame at
+                min(vw/1920, vh/1080)           -> orb d = 248.45*k
+                                                   orb cy = vh/2 + 57.87*k
+
+     Both fitted across three viewports to within 0.1px, so this is mechanism
+     rather than coincidence. The consequence is that they agree at exactly one
+     aspect ratio (vw/vh = 1.56) and nowhere else. The intro orb is always the
+     lower of the two — the gap is 57.87*k + 0.00389*vh, which cannot be zero —
+     and the size ratio drifts with the window because one rule is height-bound
+     and the other goes width-bound as soon as the window is wide. Measured:
+     +52px and 1.02x at 1600x1000, +47px and 1.14x at 1440x810, and on a phone
+     the other way round — -10px, but 0.79x.
+
+     The fix is NOT to move the intro's orb onto the film's. That was tried, and
+     it breaks the orb: it is pixel art, so shifting it by a fraction of a pixel
+     lands its pixel grid between device pixels and the edges go to mush. The
+     home screen is also the design, and the design is not what is wrong here.
+
+     So the film's orb comes to the intro's instead — but it must not be seen
+     DOING it. Animating the canvas into place at the end was the first attempt
+     and it reads badly: the film settles, and then the orb visibly slides down
+     another 50px, which looks like a mistake precisely because the film has
+     already come to rest. Nothing should move after the film is done.
+
+     Instead the offset is applied ONCE, statically, before the film has drawn
+     anything worth looking at — the destination is readable at ~220ms, and the
+     orb does not arrive until 5.4s. The film then simply PLAYS into the right
+     place: same animation, composed slightly lower and slightly larger, on a
+     full-screen navy field with no reference marks to measure it against. By
+     the time it ends its orb is already sitting on the intro's, and the
+     handover is a pure dissolve with no motion in it at all.
+
+     The destination is read from the intro iframe's own canvas rather than
+     computed, so this holds for both frame sets without a second table of
+     constants. If it cannot be read, nothing is applied and the handover is the
+     plain cross-fade it was before. */
+  var ORB_D = 176.4 / 874;    // film's closing orb, as a fraction of viewport height
+  var ORB_Y = 433.6 / 874;
+  var ORB_F = 0.398;          // the intro orb's share of its canvas, as flow.js draws it
+  var ORB_PHASE = 2;          // loop frame whose ripple ring matches the film's ending
+
+  /* Place the film so that it ENDS where the intro's orb already is.
+
+     Static: no transition, applied once, as early as the destination can be
+     read. Nothing animates, so there is nothing to notice. */
+  var placed = false;
+
+  function place() {
+    if (placed) return true;
+    var f = document.getElementById('f-intro');
+    var d, c;
+    try { d = f && f.contentDocument; c = d && d.querySelector('canvas'); }
+    catch (e) { return false; }
+    if (!c) return false;
+
+    var r = c.getBoundingClientRect(), fr = f.getBoundingClientRect();
+    if (!(r.width > 0)) return false;
+    var toX = fr.left + r.left + r.width / 2;
+    var toY = fr.top + r.top + r.height / 2;
+    var toD = r.width * ORB_F;
+
+    var vw = innerWidth, vh = innerHeight;
+    var fromX = vw / 2, fromY = vh * ORB_Y, fromD = vh * ORB_D;
+
+    // the canvas is inset:0, so its own box IS the viewport and the orb's
+    // viewport coordinates can be used as the transform origin directly
+    canvas.style.transformOrigin = fromX + 'px ' + fromY + 'px';
+    canvas.style.transform = 'translate(' + (toX - fromX) + 'px,' +
+      (toY - fromY) + 'px) scale(' + (toD / fromD) + ')';
+    placed = true;
+    return true;
+  }
+
+  /* Poll until it takes. The intro's orb canvas is built by flow.js once that
+     iframe has loaded, which is ~220ms in — well before the film has anything
+     on screen but not something to assume, so this keeps trying and gives up
+     quietly rather than placing the film late, mid-shot, where the shift would
+     be the very thing this is avoiding. */
+  (function placer(t) {
+    if (place() || t > 2500) return;
+    setTimeout(function () { placer(t + 50); }, 50);
+  })(0);
+
+  /* `landed` is the film reaching its own end. A tap-to-skip at 2s leaves the
+     orb mid-flight, so there is no closing ring to match and the phase pin is
+     pointless there — the film is nowhere near its resting frame. */
+  function fadeOut(ms, landed) {
+    /* Match the intro's ripple phase as the dissolve starts. Geometry alone
+       does not finish this: the orbs can sit exactly on top of one another and
+       the cut still shows, because the orb carries a ripple ring on a 32-frame
+       loop that has been running since the intro loaded — several seconds
+       before the handover — so by then it is at an arbitrary point in its cycle
+       while the film is holding one particular ring.
+
+       ORB_PHASE is not a guess. Every frame of the loop was rendered over the
+       same background as the film's last frame and scored by mean absolute
+       difference in the ring's annulus, on BOTH frame sets:
+
+         phase   desktop   portrait
+           2       1.106     1.565   <- chosen
+           3       1.088     1.607
+          10       2.866     4.108   <- worst
+
+       One value serves both: 2 and 3 are within a few percent of each other on
+       either layout, and both are less than half the error of the worst phase.
+       2 wins on the sum and on portrait, which is the weaker of the two — the
+       film is composed at 0.79 there, so its ring is scaled down relative to
+       the intro's and cannot match as closely no matter which frame is picked.
+       Splitting this per layout would be fitting to a difference of 0.04 out of
+       255. See flow.js for why it is held rather than simply rewound. */
+    var f = document.getElementById('f-intro');
+    if (landed) {
+      try { if (f && f.contentWindow.__orbResync) f.contentWindow.__orbResync(ORB_PHASE, ms); }
+      catch (e) {}
+    }
+
+    box.style.transitionDuration = ms + 'ms';
+    box.classList.add('off');
+    /* The player is torn down AFTER the fade, not before it. destroy() releases
+       the GL surface, and a released surface is a blank canvas — do it up front
+       and the orb is simply gone for the whole handover, leaving a navy square
+       to fade on its own. It has to still be holding its last frame while it
+       travels. */
+    setTimeout(function () {
+      if (player) { try { player.destroy(); } catch (e) {} player = null; }
+      box.remove();
+    }, ms + 60);
+  }
+
+  /* `landed` is the film reaching its own end. A tap-to-skip at 2s must not run
+     the converge: the orb is still mid-flight there, so there is no closing
+     position to move away from and it would just slide the wrong thing. */
+  function dismiss(ms, landed) {
     if (done) return;
     done = true;
-    if (player) { try { player.destroy(); } catch (e) {} player = null; }
-    box.style.transitionDuration = (ms || 320) + 'ms';
-    box.classList.add('off');
-    setTimeout(function () { box.remove(); }, (ms || 320) + 60);
+    /* dismiss is also used directly as a handler — loadError and the import's
+       .catch both hand it an Event or an Error as the first argument. Without
+       this it survives `ms || 320`, and `ms + 60` is then NaN, which setTimeout
+       reads as 0: the splash vanishes instead of fading, on exactly the paths
+       where something has already gone wrong. */
+    ms = typeof ms === 'number' ? ms : 320;
+    fadeOut(ms, landed);
   }
   // Whatever happens, the splash is gone by 9s. A stall on a slow phone must
   // not leave someone staring at a navy rectangle.
@@ -225,7 +377,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     });
 
     // the film runs to its own end; nothing cuts it short
-    player.addEventListener('complete', function () { dismiss(FADE_MS); });
+    player.addEventListener('complete', function () { dismiss(FADE_MS, true); });
     player.addEventListener('loadError', dismiss);
   }
 
