@@ -713,8 +713,157 @@
 
          Scoped to this query on purpose. --k is defined nowhere else, so the
          portrait rules above cannot accidentally depend on it. */
+      /* The FG Fog is a LANDSCAPE-only layer: the designer's Mobile frame has
+         no such child, so the phone gets none. */
+      #fog { display: none; }
+      #ui {
+        --heart: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 13'%3E%3Cpath d='M7 13C7 13 0 8.6 0 4.2 0 1.9 1.6 0 3.6 0 5.1 0 6.4.9 7 2.2 7.6.9 8.9 0 10.4 0 12.4 0 14 1.9 14 4.2 14 8.6 7 13 7 13Z' fill='%23fff'/%3E%3C/svg%3E");
+      }
+
       @media (min-width: 768px) and (min-aspect-ratio: 1 / 1) {
         #ui { --k: min(100vw / 1920, 100vh / 1080); }
+
+        /* frame: FG Fog at (0, 119), 1920 x 1280, object-cover, lighten, 13%.
+
+           The image is 1536x1024 and the box 1920x1280 — both 1.5, so cover is
+           a plain stretch and nothing is cropped. Only the top 75% of it is
+           ever on screen, and it is pure black until about 60% down, so the
+           haze only ever touches the horizon and the terrain. That is also why
+           it can sit above everything in the page without matching Figma's
+           exact stacking: where it would overlap the islands it is black, and
+           lighten with black is a no-op.
+
+           z-index 1 puts it over the canvas (which is z-auto) and under #ui
+           (z-index 2). */
+        #fog {
+          display: block;
+          position: fixed;
+          left: 0;
+          top: calc(119 * var(--k));
+          width: 100%;
+          height: calc(1280 * var(--k));
+          object-fit: cover;
+          opacity: 0.13;
+          mix-blend-mode: lighten;
+          pointer-events: none;
+          z-index: 1;
+        }
+        #fog { --k: min(100vw / 1920, 100vh / 1080); }
+
+        /* The stone plaque, at the frame's own numbers.
+
+           STRETCHED, not 9-sliced. The old rule border-imaged it with a 60px
+           horizontal slice, which squared off the rounded ends and dragged the
+           corner vines out of place. It never needed slicing: the asset is
+           661x251 and the plaque is 337.5x128 — aspect 2.633 against 2.637 —
+           so a plain stretch reproduces it. Checked against a render of the
+           node: median difference 12 across the stone.
+
+           Dropping the border also drops the offset problem the sliced version
+           had. Absolutely-positioned children lay out against the PADDING box,
+           so with a 15px transparent border every one of the frame's offsets
+           arrived 15px late and had to be corrected. With a background image
+           there is no border and the numbers below are the frame's, unmodified.
+
+           Measured off 1:1 renders of both UI Box nodes:
+             DISTANCE: / JUMPS:  left 47, cap box y 54.5..69.5, 18.096px #cbd1e1
+             25667               left 160, cap box y 46..79,    40.29px  #011864
+             4 pips              left 127, 35x35, pitch 43, y 46..81
+           Both rows share a centre line at y=62, which is 2px above the box's
+           geometric middle — that is where the stone's own inner area sits. */
+        .hud {
+          top: calc(30 * var(--k) + env(safe-area-inset-top));
+          left: calc(51 * var(--k) + env(safe-area-inset-left));
+          right: calc(51 * var(--k) + env(safe-area-inset-right));
+          padding: 0;
+        }
+        .panel {
+          position: relative;
+          width: calc(337.5 * var(--k));
+          height: calc(128 * var(--k));
+          border: 0;
+          border-image: none;
+          padding: 0;
+          min-width: 0;
+          background: none;
+        }
+        /* The plaque rides a pseudo-element rather than the panel's own
+           background, so the RIGHT box can be mirrored without taking its text
+           and pips with it. The frame does mirror it: the right node against
+           the left one flipped scores a median difference of 0 (p90 9), where
+           unflipped it is 5 (p90 67). */
+        .panel::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: url('art/uibox.png') 0 0 / 100% 100% no-repeat;
+        }
+        .hud .panel:last-child::before { transform: scaleX(-1); }
+        .panel > * {
+          position: absolute;
+          top: calc(62 * var(--k));
+          transform: translateY(-50%);
+        }
+        /* the plaque fills the box; it is not one of the centred rows */
+        .panel::before { top: 0; transform: none; }
+        .panel .k {
+          left: calc(47 * var(--k));
+          font-size: calc(18.096 * var(--k));
+          letter-spacing: calc(-0.3619 * var(--k));
+          line-height: 1.21;
+          color: #cbd1e1;
+          font-weight: 700;
+          text-shadow: none;
+        }
+        .panel .v {
+          left: calc(160 * var(--k));
+          font-size: calc(40.29 * var(--k));
+          line-height: 1.21;
+          color: #011864;
+          font-weight: 700;
+          text-shadow: none;
+        }
+        /* cap-height trim, the same thing Figma does. Where it is supported the
+           element box IS the cap box, so centring it on y=62 lands exactly
+           where the frame has it; where it is not, the line box centres there
+           instead, a pixel or two low and nothing worse. */
+        .panel .k, .panel .v { text-box: trim-both cap alphabetic; }
+        /* not in the frame — kept in the DOM because main.ts writes to #dist,
+           #orbs and #capnote every frame and would throw on a missing node */
+        .panel .sub2 { display: none; }
+        .panel #tank {
+          left: calc(127 * var(--k));
+          display: flex;
+          gap: calc(8 * var(--k));
+          height: calc(35 * var(--k));
+          margin-top: 0;
+          justify-content: flex-start;
+        }
+        .panel .pip {
+          width: calc(35 * var(--k));
+          height: calc(35 * var(--k));
+          border-radius: 50%;
+          background: #fff;
+          box-shadow: none;
+          position: relative;
+          border: 0;
+        }
+        .panel .pip::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: #ececec;
+          -webkit-mask: var(--heart) center / calc(14 * var(--k)) calc(13 * var(--k)) no-repeat;
+          mask: var(--heart) center / calc(14 * var(--k)) calc(13 * var(--k)) no-repeat;
+        }
+        .panel .pip.ghost {
+          background: transparent;
+          border: calc(2 * var(--k)) solid #fff;
+        }
+        .panel .pip.ghost::after { display: none; }
+        /* the over-cap charge the disc grants — not a frame state, so it is a
+           filled pip with a brand-blue heart rather than an invented colour */
+        .panel .pip.bonus::after { background: #011864; }
 
         /* frame: Layer_1 at (750.3, 68), 418.7 x 64.4 */
         #lockup {
@@ -742,18 +891,21 @@
         #ranksBtn { bottom: calc(1080 * var(--k) * 0.085); }
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-COlMBFBu.js"></script>
+    <script type="module" crossorigin src="./assets/index-D3HO54IJ.js"></script>
   </head>
   <body>
+    <!-- The frame's FG Fog. Over the world, under the HUD — which is where
+         Figma has it: above the background and the terrain, below the panels. -->
+    <img id="fog" src="art/fog.webp" alt="">
     <div id="ui">
       <div class="hud">
         <div class="panel">
-          <div class="k">SCORE</div>
+          <div class="k">DISTANCE:</div>
           <div class="v"><span id="score">0</span></div>
           <div class="sub2"><span id="dist">0</span> m &nbsp;·&nbsp; <span id="orbs">0</span> orbs</div>
         </div>
-        <div class="panel" style="text-align: right">
-          <div class="k">JUMPS</div>
+        <div class="panel">
+          <div class="k">JUMPS:</div>
           <div id="tank"></div>
           <div class="sub2" id="capnote">MAX 4</div>
         </div>

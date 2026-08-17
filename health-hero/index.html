@@ -198,7 +198,22 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
       data: buf,
       autoplay: true,
       loop: false,
-      layout: { fit: 'contain', align: [0.5, 0.5] },
+      /* fit-height, not contain.
+
+         The comp is 497x874 — widened so it stops cropping its own content,
+         which was losing 19% of the width. But 497 is wider in aspect than a
+         phone, so `contain` started binding on WIDTH there: the film dropped to
+         79% and sat in an 852-tall viewport at 691 tall. Invisible bands, since
+         they are the same #202664, but a visibly smaller animation on the one
+         device that matters most.
+
+         Binding to height instead is identical to contain on desktop — that is
+         height-bound anyway, scale 1.1442 at 1600x1000 either way — and on a
+         phone it restores exactly the original framing: scale 0.9748, full 852,
+         with 393 of the comp's 497 units visible against the 402 the old comp
+         had. The extra width is simply cropped there, which is what a portrait
+         screen was always doing to it. */
+      layout: { fit: 'fit-height', align: [0.5, 0.5] },
       renderConfig: {
         // The canvas is the whole viewport and the film is heavy. A phone
         // reporting DPR 3 would have this rasterising a 3x surface every
