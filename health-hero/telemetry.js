@@ -79,8 +79,17 @@
      the timed flush drops from OPTIONS+POST to a single request. */
   var TYPE = 'text/plain';
 
+  /* One request at a time, per visit.
+     Without this, an urgent flush can overlap the timed one and both send the
+     same events, because the queue is only trimmed when a response comes back.
+     The server's sequence check does not save us there: both requests read the
+     same high-water-mark before either writes, so both apply. Serialising here
+     removes the race at its source rather than papering over it. */
+  var inFlight = false;
+
   function flush(useBeacon) {
     if (off || !queue.length) return;
+    if (inFlight && !useBeacon) return;      // the next flush carries these
     var batch = queue.slice(0, 100);
     var body = JSON.stringify({ sid: sid, device: device, form: form, events: batch });
 
@@ -96,6 +105,7 @@
       return;
     }
 
+    inFlight = true;
     fetch(API + '/t', {
       method: 'POST', keepalive: true,
       headers: { 'content-type': TYPE },
@@ -106,6 +116,9 @@
       fails = 0;
     }).catch(function () {
       if (++fails >= MAX_FAILS) { off = true; queue = []; }
+    }).then(function () {
+      inFlight = false;
+      if (queue.length) flush();             // anything queued while we waited
     });
   }
 
