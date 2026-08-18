@@ -42,7 +42,8 @@
      listening when the server recovers. */
   var BACKOFF_MS = 30000;      // first retry delay
   var BACKOFF_MAX = 240000;    // never wait longer than four minutes
-  var MAX_QUEUE = 200;         // bounded, so a dead endpoint cannot grow memory
+  /* No queue to bound any more: the state IS the payload, so a visit's memory
+     is a fixed set of integers however long an outage lasts. */
 
   function rid() {
     var a = new Uint8Array(12);
@@ -67,33 +68,65 @@
 
   var sid = rid();
   var form = Math.min(innerWidth, innerHeight) < 768 ? 'mobile' : 'desktop';
-  var queue = [];
-  var seq = 0;
+  var version = 0;
   var fails = 0;
   var backoffUntil = 0;
   var engaged = 0;          // ms accumulated since the last flush
   var lastBeat = Date.now();
 
-  /* The events worth not losing. A visitor who finishes a run and closes the
-     tab is the common case at a booth, and waiting up to 15 s to report the
-     run they just played is the difference between a distance total that is
-     right and one that is quietly low. */
+  /* WHAT THE TOTALS ARE, not what changed.
+     The server puts these on a queue, and queues do not guarantee order: a
+     message that failed is redelivered AFTER newer ones. Sending deltas against
+     a high-water-mark would silently discard the redelivered one. Sending the
+     running totals means any single message carries everything up to its
+     version, so reordering, duplication and outright loss are all harmless —
+     the next message repairs it. */
+  var st = {
+    engaged_ms: 0,
+    saw_splash: 0, saw_intro: 0, saw_game: 0, saw_ended: 0, saw_board: 0,
+    cta_out_ended: 0, cta_out_board: 0, cta_play_again: 0,
+    cta_leaderboard: 0, cta_privacy: 0,
+    runs: 0, finished: 0, metres: 0, orbs: 0, named: 0
+  };
+  var SCREEN_COL = {
+    splash: 'saw_splash', intro: 'saw_intro', game: 'saw_game',
+    ended: 'saw_ended', board: 'saw_board'
+  };
+  var CTA_COL = {
+    play_again: 'cta_play_again', leaderboard: 'cta_leaderboard', privacy: 'cta_privacy'
+  };
+
+  /* The moments worth sending at once rather than on the next tick. A visitor
+     who finishes a run and closes the tab is the common case at a booth. */
   var URGENT = { run_end: 1, cta: 1, name_claim: 1 };
 
-  function push(kind, data) {
-    var e = { seq: ++seq, kind: kind };
-    for (var k in data) if (data[k] !== undefined && data[k] !== null) e[k] = data[k];
-    queue.push(e);
-    // Oldest first, so a long outage costs the start of the visit rather than
-    // the whole of it, and memory stays flat either way.
-    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
-    if (URGENT[kind] || queue.length >= 40) flush();
+  function record(kind, d) {
+    d = d || {};
+    if (kind === 'hb') {
+      if (d.ms > 0) st.engaged_ms += d.ms;
+      return false;
+    }
+    if (kind === 'view') { var c = SCREEN_COL[d.screen]; if (c) st[c] += 1; return false; }
+    if (kind === 'run_start') { st.runs += 1; return false; }
+    if (kind === 'run_end') {
+      /* Checked here so one bad run cannot poison the visit's totals, which
+         the server can only bounds-check in aggregate. */
+      if (d.score === d.metres + d.orbs * 10 && d.metres >= 0 && d.orbs >= 0) {
+        st.finished += 1; st.metres += d.metres; st.orbs += d.orbs;
+      }
+      return true;
+    }
+    if (kind === 'name_claim') { st.named = 1; return true; }
+    if (kind === 'cta') {
+      if (d.label === 'learn_more' || d.label === 'find_out_more') {
+        if (d.screen === 'ended') st.cta_out_ended += 1;
+        else if (d.screen === 'board') st.cta_out_board += 1;
+      } else if (CTA_COL[d.label]) st[CTA_COL[d.label]] += 1;
+      return true;
+    }
+    return false;
   }
 
-  /* Events stay in the queue until the server confirms them. Combined with the
-     server's per-session sequence high-water-mark, that makes delivery
-     exactly-once: a batch we could not confirm is re-sent with the same seq
-     numbers and ignored if it did in fact land. */
   /* text/plain, NOT application/json, and this matters more than it looks.
      The body IS json and the Worker parses it as json either way — but
      application/json is not a CORS-safelisted content type, so it forces a
@@ -105,31 +138,19 @@
   var TYPE = 'text/plain';
 
   /* One request at a time, per visit.
-     Without this, an urgent flush can overlap the timed one and both send the
-     same events, because the queue is only trimmed when a response comes back.
-     The server's sequence check does not save us there: both requests read the
-     same high-water-mark before either writes, so both apply. Serialising here
-     removes the race at its source rather than papering over it. */
+     Overlapping sends are no longer a correctness problem — each carries a
+     version and the row takes the newest — but two in flight would only race
+     to write the same totals, so the older is wasted work. */
   var inFlight = false;
 
   function flush(useBeacon) {
-    if (!queue.length) return;
-    // A beacon on unload is the last chance there will ever be, so it ignores
-    // the backoff: one more attempt costs nothing once the page is going away.
     if (!useBeacon && Date.now() < backoffUntil) return;
-    if (inFlight && !useBeacon) return;      // the next flush carries these
-    var batch = queue.slice(0, 100);
-    var body = JSON.stringify({ sid: sid, device: device, form: form, events: batch });
+    if (inFlight && !useBeacon) return;
+    var body = JSON.stringify({ sid: sid, device: device, form: form, v: ++version, st: st });
 
     if (useBeacon && navigator.sendBeacon) {
-      // The page is going away: no response to wait for, no chance to retry.
-      // The return value only means "queued", never "delivered", so it is
-      // treated as the weak signal it is.
-      try {
-        if (navigator.sendBeacon(API + '/t', new Blob([body], { type: TYPE }))) {
-          queue = queue.slice(batch.length);
-        }
-      } catch (e) {}
+      // Last chance before the page goes; ignore the backoff, it costs nothing.
+      try { navigator.sendBeacon(API + '/t', new Blob([body], { type: TYPE })); } catch (e) {}
       return;
     }
 
@@ -140,16 +161,12 @@
       body: body
     }).then(function (r) {
       if (!r.ok && r.status !== 204) throw new Error('status ' + r.status);
-      queue = queue.slice(batch.length);
       fails = 0; backoffUntil = 0;
     }).catch(function () {
       fails += 1;
       backoffUntil = Date.now() +
         Math.min(BACKOFF_MS * Math.pow(2, fails - 1), BACKOFF_MAX);
-    }).then(function () {
-      inFlight = false;
-      if (queue.length) flush();             // anything queued while we waited
-    });
+    }).then(function () { inFlight = false; });
   }
 
   /* Engaged time, not elapsed time. A phone in a pocket with the tab still
@@ -161,7 +178,7 @@
       if (d > 0 && d < 60000) engaged += d;
     }
     lastBeat = now;
-    if (engaged >= 1000) { push('hb', { ms: Math.round(engaged) }); engaged = 0; }
+    if (engaged >= 1000) { record('hb', { ms: Math.round(engaged) }); engaged = 0; }
   }
 
   setInterval(function () { try { beat(); } catch (e) {} }, HB_MS);
@@ -177,7 +194,7 @@
 
   /** The one entry point. Never throws. */
   window.__t = function (kind, data) {
-    try { push(kind, data || {}); } catch (e) {}
+    try { if (record(kind, data)) flush(); } catch (e) {}
   };
 
   window.__t('view', { screen: 'splash' });
