@@ -118,16 +118,22 @@
     if (PRIMARY.test(t)) b.setAttribute('data-cta', 'primary');
     else if (SECONDARY.test(t)) b.setAttribute('data-cta', 'secondary');
     else return;
-    /* Play Again and Leaderboard are real anchors nowhere — the host wires
-       their behaviour — so they are tracked here alongside the outbound ones,
-       and by the same screen key. Replay rate is the retention signal. */
-    b.addEventListener('click', function () {
-      try {
-        if (parent !== window && parent.__t) {
-          parent.__t('cta', { screen: SCREEN, label: SLUG[t] || null });
-        }
-      } catch (e) {}
-    });
+    /* SECONDARY ONLY.
+       Play Again is an anchor nowhere — the host wires its behaviour — so the
+       click has to be caught here. The outbound buttons must NOT be, because
+       wireLinks already wrapped each of them in an anchor that reports the
+       click, and that anchor is an ancestor: a tap fires the button listener
+       and then bubbles into the anchor's. Attaching to both counted one tap
+       twice. */
+    if (b.getAttribute('data-cta') === 'secondary') {
+      b.addEventListener('click', function () {
+        try {
+          if (parent !== window && parent.__t) {
+            parent.__t('cta', { screen: SCREEN, label: SLUG[t] || null });
+          }
+        } catch (e) {}
+      });
+    }
     markFace(b);
   });
 
