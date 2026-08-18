@@ -60,8 +60,12 @@
 
   var LINKS = [
     ['click here', 'https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html'],
-    ['learn more', 'https://www.ueber-gewicht.de/'],
-    ['find out more', 'https://www.ueber-gewicht.de/']
+    /* Client-supplied campaign link, carrying their cid for attribution.
+       Written in punycode rather than as über-gewicht.de: identical
+       destination, but it cannot be mangled by a server that serves this file
+       without a charset. Browsers still show the umlaut in the address bar. */
+    ['learn more', 'http://xn--ber-gewicht-shb.de/health-hero?cid=nnref-imkrgak59x'],
+    ['find out more', 'http://xn--ber-gewicht-shb.de/health-hero?cid=nnref-imkrgak59x']
   ];
   function wireLinks() {
     var norm = function (s) { return (s || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/\.$/, ''); };
