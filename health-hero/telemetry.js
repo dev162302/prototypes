@@ -17,9 +17,32 @@
   if (!API) return;
 
   var DID = 'wizard.did';       // random per device, persisted
-  var FLUSH_MS = 15000;
-  var HB_MS = 15000;
-  var MAX_FAILS = 4;
+  /* 30 s, not 15. The heartbeat IS the write rate: there is always one queued,
+     so every visitor writes to the database once per interval whatever else
+     they do. At a projected 2,000 concurrent that is the difference between
+     ~133 and ~67 writes a second, against a database with a single writer.
+
+     It costs nothing in accuracy. beat() measures real elapsed time rather
+     than counting fixed lumps, so engaged time is exactly as precise — only
+     how often it is reported changes. */
+  var FLUSH_MS = 30000;
+  var HB_MS = 30000;
+
+  /* Back off, never give up.
+     This used to switch telemetry off for the rest of the visit after four
+     consecutive failures, and throw the queue away with it. The intent was
+     right — a phone must not hammer a broken endpoint while someone is trying
+     to play — but it could not tell "the API is down" from "the API is busy
+     for twenty seconds", and it punished the second like the first. A brief
+     slowdown at peak would blind every visitor mid-session, permanently, and
+     lose what they had already collected. That is the busiest hour of the
+     campaign and the data you most want.
+
+     Backing off stops the hammering just as effectively, and is still
+     listening when the server recovers. */
+  var BACKOFF_MS = 30000;      // first retry delay
+  var BACKOFF_MAX = 240000;    // never wait longer than four minutes
+  var MAX_QUEUE = 200;         // bounded, so a dead endpoint cannot grow memory
 
   function rid() {
     var a = new Uint8Array(12);
@@ -47,7 +70,7 @@
   var queue = [];
   var seq = 0;
   var fails = 0;
-  var off = false;
+  var backoffUntil = 0;
   var engaged = 0;          // ms accumulated since the last flush
   var lastBeat = Date.now();
 
@@ -58,10 +81,12 @@
   var URGENT = { run_end: 1, cta: 1, name_claim: 1 };
 
   function push(kind, data) {
-    if (off) return;
     var e = { seq: ++seq, kind: kind };
     for (var k in data) if (data[k] !== undefined && data[k] !== null) e[k] = data[k];
     queue.push(e);
+    // Oldest first, so a long outage costs the start of the visit rather than
+    // the whole of it, and memory stays flat either way.
+    if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
     if (URGENT[kind] || queue.length >= 40) flush();
   }
 
@@ -88,7 +113,10 @@
   var inFlight = false;
 
   function flush(useBeacon) {
-    if (off || !queue.length) return;
+    if (!queue.length) return;
+    // A beacon on unload is the last chance there will ever be, so it ignores
+    // the backoff: one more attempt costs nothing once the page is going away.
+    if (!useBeacon && Date.now() < backoffUntil) return;
     if (inFlight && !useBeacon) return;      // the next flush carries these
     var batch = queue.slice(0, 100);
     var body = JSON.stringify({ sid: sid, device: device, form: form, events: batch });
@@ -113,9 +141,11 @@
     }).then(function (r) {
       if (!r.ok && r.status !== 204) throw new Error('status ' + r.status);
       queue = queue.slice(batch.length);
-      fails = 0;
+      fails = 0; backoffUntil = 0;
     }).catch(function () {
-      if (++fails >= MAX_FAILS) { off = true; queue = []; }
+      fails += 1;
+      backoffUntil = Date.now() +
+        Math.min(BACKOFF_MS * Math.pow(2, fails - 1), BACKOFF_MAX);
     }).then(function () {
       inFlight = false;
       if (queue.length) flush();             // anything queued while we waited
