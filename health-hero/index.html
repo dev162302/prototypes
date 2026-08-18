@@ -983,6 +983,16 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
     setText(F.board, pfxId(spec.pfx + 4), e.orbs + (e.orbs === 1 ? ' ORB' : ' ORBS'));
   }
   function showBoard() {
+    /* Every route to the board funnels through here, and there are three: the
+       cloned LEADERBOARD button this file builds, the name field acting as one
+       for a returning player, and a real button flow.js matched by label. Only
+       the third was being counted, because the other two are created by the
+       host and flow.js never sees them. Counting the intent here rather than
+       per-button also means a fourth route cannot go missing.
+
+       This is the ASK, not the arrival: saw_board fires in show('board'),
+       after /top returns. The gap between them is the leaderboard failing. */
+    if (window.__t) window.__t('cta', { screen: 'ended', label: 'leaderboard' });
     if (API) return showBoardRemote();
     var I = ids(), list = loadBoard();
     for (var i = 0; i < 5; i++) fillRow(rowSpec(i), list[i], i + 1);

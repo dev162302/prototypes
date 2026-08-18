@@ -54,8 +54,10 @@
     'click here': 'privacy',
     'learn more': 'learn_more',
     'find out more': 'find_out_more',
-    'play again': 'play_again',
-    'leaderboard': 'leaderboard'
+    'play again': 'play_again'
+    /* 'leaderboard' deliberately absent: the host reports that one from
+       showBoard(), which is the only place that sees all three routes to it.
+       Matching it here as well would double-count the one route both can see. */
   };
 
   var LINKS = [
