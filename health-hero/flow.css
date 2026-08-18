@@ -206,19 +206,42 @@ body.desk .left-in   { position: absolute; left: 0; top: 0; width: 1920px; heigh
    No transition: this is pixel art, and the frames snap. */
 [data-cta] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
+/* The state lands on the FACE and the OUTLINE, not the button as a whole.
+   Applied to the button it tinted everything at once, so the chip changed
+   colour rather than the button changing state. flow.js marks both parts; see
+   the note there for how they are found. */
 @media (hover: hover) {
-  [data-cta="primary"]:hover { filter: brightness(1.10); }
-  [data-cta="field"]:hover { filter: brightness(1.10); }
-  [data-cta="secondary"]:hover::after { background: #C7D8F5; }
-}
-[data-cta="primary"]:active { filter: brightness(0.84); }
-[data-cta="field"]:active { filter: brightness(0.84); }
-[data-cta="secondary"]:active::after { background: #C9CDD6; }
+  [data-cta="primary"]:hover [data-face] { filter: brightness(1.10); }
+  [data-cta="field"]:hover   [data-face] { filter: brightness(1.10); }
 
-/* the overlay itself; the Button nodes already carry position:relative, and
-   absolute children are out of flow so the inline-grid is untouched */
-[data-cta="secondary"]:hover::after,
-[data-cta="secondary"]:active::after {
-  content: ''; position: absolute; inset: 0;
-  pointer-events: none; mix-blend-mode: multiply;
+  /* The white buttons use Figma's OWN hover artwork rather than a filter or a
+     tint. Both pieces are flat and share our geometry exactly — the outline is
+     20 paths of #EAF2FF, the face a single #CCDFFF path — so laying them over
+     the default slices reproduces the frame rather than approximating it. No
+     filter could have done the border anyway: it goes LIGHTER than the default
+     #E7E9F0, and its bottom edge is a different colour again. */
+  [data-cta="secondary"]:hover [data-outline]::after {
+    background: url('assets/hover-outline.svg') 0 0 / 100% 100% no-repeat;
+  }
+  [data-cta="secondary"]:hover [data-face]::after {
+    background: url('assets/hover-face.svg') 0 0 / 100% 100% no-repeat;
+  }
+  /* Lift the face over the inner bevel slices, which are drawn after it and
+     were painting their default shading back on top of the hover art. Figma's
+     hover face is flat — sampled #CCDFFF at every height — so covering those
+     bevels is the frame's intent, not a shortcut around them. */
+  [data-cta="secondary"]:hover [data-face] { z-index: 1; }
+  [data-cta="secondary"]:hover [data-label] { position: relative; z-index: 2; }
+}
+[data-cta="primary"]:active [data-face] { filter: brightness(0.84); }
+[data-cta="field"]:active   [data-face] { filter: brightness(0.84); }
+[data-cta="secondary"]:active [data-face]::after {
+  background: #C9CDD6; mix-blend-mode: multiply;
+}
+
+/* the overlays, sized to the part they sit on */
+[data-cta="secondary"]:hover  [data-outline]::after,
+[data-cta="secondary"]:hover  [data-face]::after,
+[data-cta="secondary"]:active [data-face]::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
 }

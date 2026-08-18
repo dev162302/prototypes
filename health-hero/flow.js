@@ -79,7 +79,47 @@
               .replace(/[.↻↗\s]+$/, '');
     if (PRIMARY.test(t)) b.setAttribute('data-cta', 'primary');
     else if (SECONDARY.test(t)) b.setAttribute('data-cta', 'secondary');
+    else return;
+    markFace(b);
   });
+
+  /* Find the button's inner FACE and mark it, so a state change lands on the
+     face alone and leaves the raised border alone.
+
+     A state applied to the whole button tints its bevel too, which reads as
+     the entire chip changing colour rather than the face lighting up — the
+     frame keeps that border constant in every state.
+
+     Found by area, not by node id or order: the artwork is 28 slices, and in
+     every button the largest is the full outline and the SECOND largest is the
+     face inset within it. Measured across all four CTAs it is 100% then 77%
+     every time, so the ranking is a property of how these are drawn rather
+     than a coincidence worth hard-coding around. */
+  function markFace(btn) {
+    var bb = btn.getBoundingClientRect();
+    if (!bb.width || !bb.height) return;          // hidden right now; skip
+    var imgs = [].slice.call(btn.querySelectorAll('img')).map(function (im) {
+      var r = im.getBoundingClientRect();
+      return { el: im, area: r.width * r.height };
+    }).sort(function (a, b2) { return b2.area - a.area; });
+    if (imgs.length < 2) return;
+    var face = imgs[1].el.parentElement || imgs[1].el;
+    var outline = imgs[0].el.parentElement || imgs[0].el;
+    face.setAttribute('data-face', '');
+    outline.setAttribute('data-outline', '');
+    /* The label has to stay above both. Lifting the face over the bevels also
+       lifted it over the text, which vanished on hover. */
+    var p = btn.querySelector('p');
+    if (p && p.parentElement) p.parentElement.setAttribute('data-label', '');
+    // the overlays need a positioned box to sit in
+    [face, outline].forEach(function (el) {
+      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    });
+  }
+  /* The name field is tagged by the host, not here — its label changes as you
+     use it, so it cannot be matched by wording. It still needs its face found,
+     so the host calls back into this once it has tagged it. */
+  window.__markFace = markFace;
 
   /* Give mixed-size lines something real to trim against.
 
