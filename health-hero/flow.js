@@ -42,7 +42,11 @@
      new wording is added here. That is exactly how FIND OUT MORE shipped dead. */
   /* d-leaderboard and leaderboard are one screen at two breakpoints; the form
      factor is already recorded on the session, so they collapse here. */
-  var SCREEN = (location.pathname.match(/([^\/]+)\.html$/) || [, ''])[1].replace(/^d-/, '');
+  /* .html is OPTIONAL here: Cloudflare Pages serves these as clean URLs, so
+     the same document is /run-ended live and /run-ended.html locally. Matching
+     only the extension form worked in local testing and produced a null screen
+     on the deployment, which is the one place it matters. */
+  var SCREEN = (location.pathname.match(/([^\/]+?)(?:\.html)?$/) || [, ''])[1].replace(/^d-/, '');
   if (SCREEN === 'run-ended') SCREEN = 'ended';
   else if (SCREEN === 'leaderboard') SCREEN = 'board';
 
