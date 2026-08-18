@@ -100,8 +100,15 @@
      who finishes a run and closes the tab is the common case at a booth. */
   var URGENT = { run_end: 1, cta: 1, name_claim: 1 };
 
+  /* Set whenever the totals move, cleared when a send takes them. Without it
+     a change made while a request is in flight waits for the next tick — and
+     the changes most likely to land in that window are the urgent ones, a
+     click or a finished run just before the visitor leaves. */
+  var dirty = false;
+
   function record(kind, d) {
     d = d || {};
+    dirty = true;
     if (kind === 'hb') {
       if (d.ms > 0) st.engaged_ms += d.ms;
       return false;
@@ -146,6 +153,7 @@
   function flush(useBeacon) {
     if (!useBeacon && Date.now() < backoffUntil) return;
     if (inFlight && !useBeacon) return;
+    dirty = false;
     var body = JSON.stringify({ sid: sid, device: device, form: form, v: ++version, st: st });
 
     if (useBeacon && navigator.sendBeacon) {
@@ -166,7 +174,10 @@
       fails += 1;
       backoffUntil = Date.now() +
         Math.min(BACKOFF_MS * Math.pow(2, fails - 1), BACKOFF_MAX);
-    }).then(function () { inFlight = false; });
+    }).then(function () {
+      inFlight = false;
+      if (dirty) flush();          // state moved while we were waiting
+    });
   }
 
   /* Engaged time, not elapsed time. A phone in a pocket with the tab still
