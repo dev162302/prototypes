@@ -51,37 +51,54 @@
   var engaged = 0;          // ms accumulated since the last flush
   var lastBeat = Date.now();
 
+  /* The events worth not losing. A visitor who finishes a run and closes the
+     tab is the common case at a booth, and waiting up to 15 s to report the
+     run they just played is the difference between a distance total that is
+     right and one that is quietly low. */
+  var URGENT = { run_end: 1, cta: 1, name_claim: 1 };
+
   function push(kind, data) {
     if (off) return;
     var e = { seq: ++seq, kind: kind };
     for (var k in data) if (data[k] !== undefined && data[k] !== null) e[k] = data[k];
     queue.push(e);
-    if (queue.length >= 40) flush();      // long before the server's 100 cap
+    if (URGENT[kind] || queue.length >= 40) flush();
   }
 
   /* Events stay in the queue until the server confirms them. Combined with the
      server's per-session sequence high-water-mark, that makes delivery
      exactly-once: a batch we could not confirm is re-sent with the same seq
      numbers and ignored if it did in fact land. */
+  /* text/plain, NOT application/json, and this matters more than it looks.
+     The body IS json and the Worker parses it as json either way — but
+     application/json is not a CORS-safelisted content type, so it forces a
+     preflight. sendBeacon cannot preflight: the request is dropped, and it
+     still returns true, so there is no way to notice. Every end-of-visit
+     flush was being thrown away, which is precisely where run_end and the
+     outbound click live. text/plain is safelisted, so the beacon goes, and
+     the timed flush drops from OPTIONS+POST to a single request. */
+  var TYPE = 'text/plain';
+
   function flush(useBeacon) {
     if (off || !queue.length) return;
     var batch = queue.slice(0, 100);
     var body = JSON.stringify({ sid: sid, device: device, form: form, events: batch });
 
     if (useBeacon && navigator.sendBeacon) {
-      // The page is going away; there is no response to wait for and no chance
-      // to retry, so drop the queue rather than hold it for a flush that will
-      // never run.
+      // The page is going away: no response to wait for, no chance to retry.
+      // The return value only means "queued", never "delivered", so it is
+      // treated as the weak signal it is.
       try {
-        navigator.sendBeacon(API + '/t', new Blob([body], { type: 'application/json' }));
-        queue = queue.slice(batch.length);
+        if (navigator.sendBeacon(API + '/t', new Blob([body], { type: TYPE }))) {
+          queue = queue.slice(batch.length);
+        }
       } catch (e) {}
       return;
     }
 
     fetch(API + '/t', {
       method: 'POST', keepalive: true,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': TYPE },
       body: body
     }).then(function (r) {
       if (!r.ok && r.status !== 204) throw new Error('status ' + r.status);
