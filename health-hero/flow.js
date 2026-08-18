@@ -40,6 +40,20 @@
      Learn More. Matching on the label is what makes this survive re-exports —
      and it is also why renaming a button silently breaks its link unless the
      new wording is added here. That is exactly how FIND OUT MORE shipped dead. */
+  /* d-leaderboard and leaderboard are one screen at two breakpoints; the form
+     factor is already recorded on the session, so they collapse here. */
+  var SCREEN = (location.pathname.match(/([^\/]+)\.html$/) || [, ''])[1].replace(/^d-/, '');
+  if (SCREEN === 'run-ended') SCREEN = 'ended';
+  else if (SCREEN === 'leaderboard') SCREEN = 'board';
+
+  var SLUG = {
+    'click here': 'privacy',
+    'learn more': 'learn_more',
+    'find out more': 'find_out_more',
+    'play again': 'play_again',
+    'leaderboard': 'leaderboard'
+  };
+
   var LINKS = [
     ['click here', 'https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html'],
     ['learn more', 'https://www.ueber-gewicht.de/'],
@@ -56,6 +70,20 @@
                norm(t.parentElement.textContent) === label) t = t.parentElement;
         var a = document.createElement('a');
         a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        /* Keyed on SCREEN, not on the label. Both Learn More buttons point at
+           the same URL so the destination cannot separate them, and the labels
+           have already been renamed twice — one of those renames is what
+           silently killed this very link. The screen is structural.
+
+           target="_blank" means the click does not unload the page, so this
+           rides the normal flush and needs no beacon. */
+        a.addEventListener('click', function () {
+          try {
+            if (parent !== window && parent.__t) {
+              parent.__t('cta', { screen: SCREEN, label: SLUG[label] || null });
+            }
+          } catch (e) {}
+        });
         a.style.cssText = 'display:contents;cursor:pointer;color:inherit;text-decoration:inherit';
         t.parentElement.insertBefore(a, t);
         a.appendChild(t);
@@ -80,6 +108,16 @@
     if (PRIMARY.test(t)) b.setAttribute('data-cta', 'primary');
     else if (SECONDARY.test(t)) b.setAttribute('data-cta', 'secondary');
     else return;
+    /* Play Again and Leaderboard are real anchors nowhere — the host wires
+       their behaviour — so they are tracked here alongside the outbound ones,
+       and by the same screen key. Replay rate is the retention signal. */
+    b.addEventListener('click', function () {
+      try {
+        if (parent !== window && parent.__t) {
+          parent.__t('cta', { screen: SCREEN, label: SLUG[t] || null });
+        }
+      } catch (e) {}
+    });
     markFace(b);
   });
 

@@ -73,7 +73,9 @@
 /* The deployed leaderboard. ?api=<url> still overrides it, so the same build
    can be pointed at a local Worker while developing. */
 window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
+window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_API;
 </script>
+<script src="telemetry.js"></script>
 <script>
 /* ---------------------------------------------------------------- splash --
 
@@ -485,7 +487,10 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
             (window.FLOW_API || '');
   var ME = 'wizard.me.v1';            // { handle, token } once a name is claimed
   function me() { try { return JSON.parse(localStorage.getItem(ME) || 'null'); } catch (e) { return null; } }
-  function setMe(v) { try { localStorage.setItem(ME, JSON.stringify(v)); } catch (e) {} }
+  function setMe(v) {
+    try { localStorage.setItem(ME, JSON.stringify(v)); } catch (e) {}
+    if (window.__t && v && v.handle) window.__t('name_claim', { screen: 'ended' });
+  }
 
   var KEY = 'wizard.board.v1', MAX = 10;
 
@@ -567,6 +572,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
 
   function show(name) {
     for (var k in F) F[k].classList.toggle('on', k === name);
+    if (name !== current && window.__t) window.__t('view', { screen: name });
     current = name;
     // iOS scrolls the page to reveal the keyboard and does not scroll back.
     scrollTo(0, 0);
@@ -577,6 +583,7 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
   var gameReady = false, wantStart = false;
   function play() {
     show('game');
+    if (window.__t) window.__t('run_start', { screen: 'game' });
     if (gameReady) F.game.contentWindow.postMessage({ type: 'rw:start' }, '*');
     else wantStart = true;
   }
@@ -585,7 +592,14 @@ window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
     if (d.type === 'rw:ready') {
       gameReady = true;
       if (wantStart) { wantStart = false; F.game.contentWindow.postMessage({ type: 'rw:start' }, '*'); }
-    } else if (d.type === 'rw:ended') { run = d.run; shot = d.shot || null; showEnded(); }
+    } else if (d.type === 'rw:ended') {
+      run = d.run; shot = d.shot || null;
+      if (window.__t && run) window.__t('run_end', {
+        screen: 'game', metres: run.metres, orbs: run.orbs, score: run.score,
+        label: d.cause === 'quit' ? 'quit' : 'fell'
+      });
+      showEnded();
+    }
   });
 
   /* ------------------------------------------------------------- wiring -- */
