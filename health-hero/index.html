@@ -72,7 +72,7 @@
 <script>
 /* The deployed leaderboard. ?api=<url> still overrides it, so the same build
    can be pointed at a local Worker while developing. */
-window.FLOW_API = 'https://novohealthhero-api.novohealthhero-api.workers.dev';
+window.FLOW_API = 'https://api.novohealthhero.com';
 window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_API;
 </script>
 <script src="telemetry.js"></script>
