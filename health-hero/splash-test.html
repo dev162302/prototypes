@@ -2,125 +2,144 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Splash renderer test</title>
 <style>
-  html,body{margin:0;background:#202664;color:#dfe6f5;font:14px/1.4 system-ui,sans-serif}
-  #stage{position:relative;height:100vh;overflow:hidden}
+  html,body{margin:0;background:#202664;color:#dfe6f5;font:13px/1.45 system-ui,-apple-system,sans-serif}
+  #stage{position:relative;height:100vh;overflow:hidden;background:#202664}
   canvas{position:absolute;display:block}
-  #ui{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
-      background:rgba(0,0,0,.45);backdrop-filter:blur(6px);text-align:center}
-  button{font:600 14px system-ui;padding:10px 14px;margin:4px;border:0;border-radius:8px;
-         background:#dfe6f5;color:#202664}
+  #ui{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+      background:rgba(0,0,0,.5);backdrop-filter:blur(8px)}
+  .row{display:flex;gap:6px;margin-bottom:6px}
+  button{flex:1;font:600 13px system-ui;padding:11px 6px;border:0;border-radius:8px;
+         background:#dfe6f5;color:#202664;-webkit-tap-highlight-color:transparent}
+  button:disabled{opacity:.4}
   button.on{background:#4d7fd6;color:#fff}
-  #out{margin-top:8px;font-variant-numeric:tabular-nums;min-height:2.4em}
+  #out{font-variant-numeric:tabular-nums;min-height:3.4em;text-align:center;font-size:12px}
+  .hint{opacity:.62;font-size:11px;text-align:center;margin-top:4px}
 </style></head><body>
 <div id="stage"><canvas id="c"></canvas></div>
 <div id="ui">
-  <button id="b-gl">A &mdash; WebGL (ships today)</button>
-  <button id="b-wk">B &mdash; Software + Worker</button>
-  <div id="out">Tap A, watch it. Then tap B, watch it. Same film, same canvas size as the real page &mdash; only the renderer differs. Numbers appear when each finishes.</div>
+  <div class="row">
+    <button data-f="v3" data-r="gl">v3 &middot; WebGL</button>
+    <button data-f="v3" data-r="wk">v3 &middot; Worker</button>
+  </div>
+  <div class="row">
+    <button data-f="v5" data-r="gl">v5 &middot; WebGL</button>
+    <button data-f="v5" data-r="wk">v5 &middot; Worker</button>
+  </div>
+  <div id="out">Pick one and watch it. Each plays the real film at the real canvas size.</div>
+  <div class="hint" id="hint"></div>
 </div>
 <script>
-/* Report what this browser can actually do, before anything is tried. */
+/* What this browser can actually do, checked before anything is tried. */
 window.__support = (function () {
   var hasOC = typeof OffscreenCanvas !== 'undefined';
   var hasTransfer = !!(document.createElement('canvas').transferControlToOffscreen);
   var hasWorker = typeof Worker !== 'undefined';
   var blobWorker = false;
-  try {
-    var u = URL.createObjectURL(new Blob(['self.close()'], {type:'text/javascript'}));
-    var w = new Worker(u); w.terminate(); URL.revokeObjectURL(u); blobWorker = true;
-  } catch (e) {}
-  return { OffscreenCanvas: hasOC, transferControlToOffscreen: hasTransfer,
-           Worker: hasWorker, blobWorker: blobWorker,
+  try { var u = URL.createObjectURL(new Blob(['self.close()'], {type:'text/javascript'}));
+        var w = new Worker(u); w.terminate(); URL.revokeObjectURL(u); blobWorker = true; } catch (e) {}
+  return { OffscreenCanvas:hasOC, transferControlToOffscreen:hasTransfer,
+           Worker:hasWorker, blobWorker:blobWorker,
            ok: hasOC && hasTransfer && hasWorker && blobWorker };
 })();
-window.addEventListener('error', function (e) {
-  var o = document.getElementById('out');
-  if (o) o.textContent = 'error: ' + (e.message || e.type);
-}, true);
-window.addEventListener('unhandledrejection', function (e) {
-  var o = document.getElementById('out');
-  if (o) o.textContent = 'failed: ' + (e.reason && e.reason.message || e.reason);
-});
+addEventListener('error', function(e){ var o=document.getElementById('out');
+  if(o) o.textContent = 'error: ' + (e.message || e.type); }, true);
+addEventListener('unhandledrejection', function(e){ var o=document.getElementById('out');
+  if(o) o.textContent = 'failed: ' + (e.reason && e.reason.message || e.reason); });
 </script>
 <script type="module">
+const out = document.getElementById('out'), hint = document.getElementById('hint');
 let c = document.getElementById('c');
-const out = document.getElementById('out');
-/* A canvas can only ever be handed to ONE renderer. transferControlToOffscreen
-   throws once a context exists, so after running the WebGL option this element
-   can never drive the worker — which is exactly why B appeared not to open
-   when A had been tried first. Each run gets a new element. */
-function freshCanvas(){
-  const n = document.createElement('canvas');
-  n.id = 'c';
-  c.parentNode.replaceChild(n, c);
-  c = n; place();
-  return n;
+
+/* Each film puts its closing orb in a different place, so play.html builds a
+   different canvas for each. Same arithmetic here — otherwise the comparison
+   would be meaningless. */
+const FILM = {
+  v3: { file:'v3.lottie', orb:176.4, compH:874,  compW:828 },
+  v5: { file:'v5.lottie', orb:175.9, compH:1489, compW:828 }
+};
+let CW = 0, CH = 0;
+function sizeFor(f){
+  const toD = innerWidth * (136/393);          // the home orb, as place() derives it
+  CH = toD / (f.orb / f.compH);
+  CW = f.compW * CH / f.compH;
 }
-(function () {
-  const s = window.__support;
-  const b = document.getElementById('b-wk');
-  if (!s.ok) {
-    b.disabled = true; b.style.opacity = .45;
-    b.textContent = 'B \u2014 not supported here';
-    out.innerHTML = 'This browser cannot run the worker renderer.<br>' +
-      'OffscreenCanvas ' + s.OffscreenCanvas + ' \u00b7 transferControlToOffscreen ' +
-      s.transferControlToOffscreen + ' \u00b7 Worker ' + s.Worker +
-      ' \u00b7 blob worker ' + s.blobWorker + '<br>' + navigator.userAgent;
-  }
-})();
-/* The same canvas play.html builds: sized so the closing orb would land on the
-   home orb. That is the whole reason this is heavier than a Lottie viewer. */
-const CW = 638, CH = 674;
-function place(){ if(!c) return; c.style.width=CW+'px'; c.style.height=CH+'px';
+function place(){ if(!c) return;
+  c.style.width=CW+'px'; c.style.height=CH+'px';
   c.style.left=Math.round((innerWidth-CW)/2)+'px';
   c.style.top=Math.round((innerHeight-CH)/2)+'px'; }
-place(); addEventListener('resize', place);
 
-let player = null;
-async function run(mode){
-  if (player) { try{ player.destroy(); }catch(e){} player=null; }
-  freshCanvas();
-  document.getElementById('b-gl').classList.toggle('on', mode==='gl');
-  document.getElementById('b-wk').classList.toggle('on', mode==='wk');
+/* A canvas can only ever be given to ONE renderer: transferControlToOffscreen
+   throws once a context exists. So every run gets a new element. */
+function freshCanvas(){
+  const n=document.createElement('canvas'); n.id='c';
+  c.parentNode.replaceChild(n,c); c=n; place(); return n;
+}
+
+if (!window.__support.ok) {
+  document.querySelectorAll('button[data-r="wk"]').forEach(b => {
+    b.disabled = true; b.textContent = b.dataset.f + ' · worker n/a';
+  });
+  hint.textContent = 'Worker unavailable: OffscreenCanvas ' + window.__support.OffscreenCanvas +
+    ', transfer ' + window.__support.transferControlToOffscreen +
+    ', blob worker ' + window.__support.blobWorker;
+}
+
+let player = null, runSeq = 0;
+async function run(btn){
+  const f = FILM[btn.dataset.f], mode = btn.dataset.r;
+  document.querySelectorAll('button').forEach(b => b.classList.toggle('on', b===btn));
+  sizeFor(f); freshCanvas();
   out.textContent = 'loading…';
-  const file = mode==='wk' ? 'sw' : 'gl';
+  const lib = mode==='wk' ? 'sw' : 'gl';
   let mod, Ctor;
   try {
-    mod = await import('./splash/_try/'+file+'.js');
+    mod = await import('./splash/_try/'+lib+'.js');
     Ctor = mode==='wk' ? mod.DotLottieWorker : mod.DotLottie;
-    if (!Ctor) throw new Error('build has no ' + (mode==='wk'?'DotLottieWorker':'DotLottie'));
-  } catch (e) { out.textContent = 'could not load renderer: ' + (e.message||e); return; }
-  Ctor.setWasmUrl('splash/_try/'+file+'.wasm');
-  const data = await fetch('splash/splash.lottie').then(r=>r.arrayBuffer());
-  let frames=0, t0=0, gaps=[], last=0;
+    if (!Ctor) throw new Error('no ' + (mode==='wk'?'DotLottieWorker':'DotLottie'));
+  } catch(e){ out.textContent = 'could not load renderer: '+(e.message||e); return; }
+  Ctor.setWasmUrl('splash/_try/'+lib+'.wasm');
+  let data;
+  try { data = await fetch('splash/_try/'+f.file).then(r=>r.arrayBuffer()); }
+  catch(e){ out.textContent='could not load film: '+(e.message||e); return; }
+
+  let frames=0, t0=0, last=0; const gaps=[];
   const opts = { canvas:c, data, autoplay:false, loop:false,
     layout:{fit:'fit-height',align:[0.5,0.5]},
-    renderConfig:{devicePixelRatio:0.75, freezeOnOffscreen:true} };
-  if (mode==='wk') opts.workerId='splashtest';
+    renderConfig:{ devicePixelRatio: Math.max(0.75, Math.min(Math.sqrt(420000/(CW*CH)), 1.5)),
+                   freezeOnOffscreen:true } };
+  if (mode==='wk') opts.workerId = 'splashtest-' + (++runSeq);
   try { player = new Ctor(opts); }
-  catch (e) { out.textContent = 'renderer failed to start: ' + (e.message||e); return; }
-  setTimeout(function(){ if (out.textContent === 'loading\u2026' || out.textContent === 'playing\u2026')
-    out.textContent = 'no frames after 15s \u2014 this renderer is not working here. ' + navigator.userAgent; }, 15000);
-  player.addEventListener('load', ()=>{
-    t0=performance.now(); last=t0; player.play();
-    out.textContent = 'playing…';
-  });
-  player.addEventListener('frame', ()=>{
-    const n=performance.now(); if(last) gaps.push(n-last); last=n; frames++;
-  });
+  catch(e){ out.textContent='renderer failed to start: '+(e.message||e); return; }
+
+  player.addEventListener('load', ()=>{ t0=performance.now(); last=t0; player.play(); out.textContent='playing…'; });
+  player.addEventListener('frame', ()=>{ const n=performance.now(); if(last) gaps.push(n-last); last=n; frames++; });
+  player.addEventListener('loadError', ()=>{ out.textContent='film failed to load'; });
   player.addEventListener('complete', ()=>{
-    const took=performance.now()-t0;
-    gaps.sort((a,b)=>a-b);
+    const took=performance.now()-t0; gaps.sort((a,b)=>a-b);
     const p50=gaps[Math.floor(gaps.length/2)]||0, worst=gaps[gaps.length-1]||0;
-    const janky=gaps.filter(g=>g>50).length;
-    out.innerHTML = (mode==='wk'?'Software + Worker':'WebGL')+
-      '<br>played '+(took/1000).toFixed(2)+'s for 5.42s of film ('+
-      (took/5420*100-100).toFixed(0)+'%)<br>'+
-      frames+' frames drawn · median gap '+p50.toFixed(0)+'ms · worst '+worst.toFixed(0)+
-      'ms · '+janky+' over 50ms';
+    out.innerHTML = btn.textContent.replace('·','&middot;') +
+      '<br>' + (took/1000).toFixed(2) + 's for 5.42s of film (' +
+      (took/5420*100-100).toFixed(0) + '%)' +
+      '<br>' + frames + ' frames · median ' + p50.toFixed(0) + 'ms · worst ' + worst.toFixed(0) +
+      'ms · ' + gaps.filter(g=>g>50).length + ' over 50ms' +
+      '<br>canvas ' + Math.round(CW) + '×' + Math.round(CH);
   });
-  player.addEventListener('loadError', ()=>{ out.textContent='failed to load'; });
+  setTimeout(()=>{ if(out.textContent==='loading…'||out.textContent==='playing…')
+    out.textContent='no frames after 15s — not working here. '+navigator.userAgent; }, 15000);
 }
-document.getElementById('b-gl').onclick = ()=>run('gl');
-document.getElementById('b-wk').onclick = ()=>run('wk');
+/* Each run is a fresh page load.
+   Tearing a player down and starting another in the same document proved
+   unreliable when swapping between the worker and WebGL — a worker holds its
+   OffscreenCanvas and wasm instance, and roughly one run in three afterwards
+   drew nothing. A reload costs a moment and removes the whole class of
+   problem, and it matches how the real page starts anyway. */
+document.querySelectorAll('button').forEach(b => b.onclick = () => {
+  location.search = '?f=' + b.dataset.f + '&r=' + b.dataset.r;
+});
+const q = new URLSearchParams(location.search);
+if (q.get('f') && q.get('r')) {
+  const b = document.querySelector('button[data-f="'+q.get('f')+'"][data-r="'+q.get('r')+'"]');
+  if (b && !b.disabled) run(b);
+}
+addEventListener('resize', place);
 </script></body></html>
