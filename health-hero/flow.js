@@ -62,12 +62,13 @@
 
   var LINKS = [
     ['click here', 'https://www.novonordisk.com/data-privacy-and-user-rights/privacy-policy.html'],
-    /* Client-supplied campaign link, carrying their cid for attribution.
-       Written in punycode rather than as über-gewicht.de: identical
-       destination, but it cannot be mangled by a server that serves this file
-       without a charset. Browsers still show the umlaut in the address bar. */
-    ['learn more', 'http://xn--ber-gewicht-shb.de/health-hero?cid=nnref-imkrgak59x'],
-    ['find out more', 'http://xn--ber-gewicht-shb.de/health-hero?cid=nnref-imkrgak59x']
+    /* The campaign landing page, carrying the client's cid for attribution.
+       Replaces the IDN form, which took four redirect hops and lost its path
+       on the way -- clickers ended up on the ueber-gewicht.de homepage rather
+       than the Health Hero page. This one answers 200 directly, keeps both the
+       path and the cid, and is https from the first byte. */
+    ['learn more', 'https://www.ueber-gewicht.de/health-hero.html?cid=nnref-imkrgak59x'],
+    ['find out more', 'https://www.ueber-gewicht.de/health-hero.html?cid=nnref-imkrgak59x']
   ];
   function wireLinks() {
     var norm = function (s) { return (s || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/\.$/, ''); };
