@@ -72,7 +72,26 @@
 <script>
 /* The deployed leaderboard. ?api=<url> still overrides it, so the same build
    can be pointed at a local Worker while developing. */
-window.FLOW_API = 'https://api.novohealthhero.com';
+/* WHICH HOSTS MAY TOUCH THE LIVE DATABASE.
+   The same build is served from four places, and until now every one of them
+   wrote to the production leaderboard and analytics — so anyone opening the
+   review link put rows in the table the client will be shown.
+
+   Only the campaign hosts stay connected. Everywhere else the flow falls back
+   to localStorage, which it has always supported: the board still works, the
+   score still shows, none of it leaves the browser. Telemetry switches itself
+   off too, since it takes the same value.
+
+   ?api=<url> still overrides, so a demo copy can be pointed at a backend
+   deliberately when someone wants to test one. */
+window.FLOW_API = (function () {
+  var h = location.hostname;
+  var live = /(^|\.)novohealthhero\.com$/.test(h) || h === 'novohealthhero.pages.dev';
+  if (!live && h !== 'localhost' && h !== '127.0.0.1') {
+    try { console.info('[health-hero] demo host: leaderboard and analytics are local only'); } catch (e) {}
+  }
+  return live ? 'https://api.novohealthhero.com' : '';
+})();
 window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_API;
 </script>
 <script src="telemetry.js"></script>
