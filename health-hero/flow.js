@@ -162,10 +162,34 @@
     var outline = imgs[0].el.parentElement || imgs[0].el;
     face.setAttribute('data-face', '');
     outline.setAttribute('data-outline', '');
-    /* The label has to stay above both. Lifting the face over the bevels also
-       lifted it over the text, which vanished on hover. */
+    /* Everything in the FOREGROUND has to stay above the face. Lifting the face
+       over the bevels also lifts it over the button's content, and each piece
+       left behind disappears on hover: first the text, and then — caught later
+       — Play Again's reload glyph, which is a separate image outside the label.
+
+       The glyph is picked out by shape rather than by position in the list.
+       A button is ~28 slices: the bevels are all 6px in one dimension, so
+       anything at least 8px in BOTH and not part of the face or outline is
+       content. That leaves the glyph, and finds nothing on the buttons that
+       do not have one. */
     var p = btn.querySelector('p');
     if (p && p.parentElement) p.parentElement.setAttribute('data-label', '');
+    var lb = p && p.parentElement && p.parentElement.getBoundingClientRect();
+    [].forEach.call(btn.querySelectorAll('img'), function (im) {
+      if (face.contains(im) || outline.contains(im)) return;
+      var r = im.getBoundingClientRect();
+      if (Math.min(r.width, r.height) < 8) return;        // a bevel slice
+      /* Size alone is not enough: one of the highlight pieces is 37x12 and
+         passed, then appeared as a white block on hover once it was lifted.
+         Content sits on the label's line; bevels hug the edges. So the middle
+         of it has to fall inside the label's band. */
+      if (!lb) return;
+      var mid = r.top + r.height / 2;
+      if (mid < lb.top || mid > lb.bottom) return;
+      var host = im.parentElement || im;
+      host.setAttribute('data-glyph', '');
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    });
     // the overlays need a positioned box to sit in
     [face, outline].forEach(function (el) {
       if (getComputedStyle(el).position === 'static') el.style.position = 'relative';

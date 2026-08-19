@@ -231,13 +231,19 @@ body.desk .left-in   { position: absolute; left: 0; top: 0; width: 1920px; heigh
      hover face is flat — sampled #CCDFFF at every height — so covering those
      bevels is the frame's intent, not a shortcut around them. */
   [data-cta="secondary"]:hover [data-face] { z-index: 1; }
-  [data-cta="secondary"]:hover [data-label] { position: relative; z-index: 2; }
+  [data-cta="secondary"]:hover [data-label],
+  [data-cta="secondary"]:hover [data-glyph] { position: relative; z-index: 2; }
 }
 [data-cta="primary"]:active [data-face] { filter: brightness(0.84); }
 [data-cta="field"]:active   [data-face] { filter: brightness(0.84); }
 [data-cta="secondary"]:active [data-face]::after {
   background: #C9CDD6; mix-blend-mode: multiply;
 }
+/* Pressing almost always happens while hovering, so the face is lifted then
+   too and the content needs the same lift on :active — otherwise the glyph
+   and label vanish for as long as the button is held down. */
+[data-cta="secondary"]:active [data-label],
+[data-cta="secondary"]:active [data-glyph] { position: relative; z-index: 2; }
 
 /* the overlays, sized to the part they sit on */
 [data-cta="secondary"]:hover  [data-outline]::after,
