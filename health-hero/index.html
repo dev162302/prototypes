@@ -506,8 +506,15 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
             (window.FLOW_API || '');
   var ME = 'wizard.me.v1';            // { handle, token } once a name is claimed
   function me() { try { return JSON.parse(localStorage.getItem(ME) || 'null'); } catch (e) { return null; } }
+  /* Persist only. Used when a returning player's token is re-synced, which is
+     housekeeping rather than a claim. */
+  function saveMe(v) { try { localStorage.setItem(ME, JSON.stringify(v)); } catch (e) {} }
+
+  /* Persist AND report. name_claim means "this visitor put a name on the board
+     for the first time", and it is the denominator behind named_players, so it
+     must not fire when a token is merely refreshed. */
   function setMe(v) {
-    try { localStorage.setItem(ME, JSON.stringify(v)); } catch (e) {}
+    saveMe(v);
     if (window.__t && v && v.handle) window.__t('name_claim', { screen: 'ended' });
   }
 
@@ -732,7 +739,24 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
     var known = API && me();
     if (known && known.handle && known.token) {
       returning = true;
-      submit(known.handle, known.token, function () {});
+      submit(known.handle, known.token, function (res) {
+        /* KEEP THE TOKEN THE SERVER HANDS BACK.
+           Discarding it used to strand a player silently. If their row is gone
+           — the board was cleared between sessions — the server treats this as
+           a first claim and mints a FRESH token. Holding on to the old one
+           meant every later run failed the ownership check with a 409, and
+           because this callback did nothing, the screen showed no sign of it:
+           they carried on playing and nothing ever reached the board again.
+
+           If the name is genuinely taken and our token cannot prove otherwise,
+           forget it, so the next run offers the name field instead of a
+           LEADERBOARD button they can no longer use. */
+        if (res && res.ok && res.token) {
+          saveMe({ handle: known.handle, token: res.token });
+        } else if (res && res.available === false) {
+          try { localStorage.removeItem(ME); } catch (e) {}
+        }
+      });
       asLeaderboardButton();
       show('ended');
       return;
@@ -871,7 +895,24 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
     var known = API && me();
     if (known && known.handle && known.token) {
       returning = true;
-      submit(known.handle, known.token, function () {});
+      submit(known.handle, known.token, function (res) {
+        /* KEEP THE TOKEN THE SERVER HANDS BACK.
+           Discarding it used to strand a player silently. If their row is gone
+           — the board was cleared between sessions — the server treats this as
+           a first claim and mints a FRESH token. Holding on to the old one
+           meant every later run failed the ownership check with a 409, and
+           because this callback did nothing, the screen showed no sign of it:
+           they carried on playing and nothing ever reached the board again.
+
+           If the name is genuinely taken and our token cannot prove otherwise,
+           forget it, so the next run offers the name field instead of a
+           LEADERBOARD button they can no longer use. */
+        if (res && res.ok && res.token) {
+          saveMe({ handle: known.handle, token: res.token });
+        } else if (res && res.available === false) {
+          try { localStorage.removeItem(ME); } catch (e) {}
+        }
+      });
       asLeaderboardButton();
       show('ended');
       return;
