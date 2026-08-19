@@ -46,7 +46,12 @@
      the field it sits on must NOT come with it — a translated background
      uncovers a band at one edge. Opacity still lives on the parent, so the
      whole group still fades as one composited layer. */
-  #splash-bg { position:absolute; inset:0; background:#202664; }
+  /* Matches the film's own background. v3 painted #202664 and this matched it
+     exactly, which is why the splash never read as a panel. v5 paints #00034C
+     — leaving the old value would have framed the film in a visibly lighter
+     rectangle, worst on desktop where the canvas is far narrower than the
+     viewport. */
+  #splash-bg { position:absolute; inset:0; background:#00034C; }
   #splash-canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
   /* "tap to skip", stated quietly. It appears after a beat: offering the skip
      before anyone has seen what they are skipping is just noise. */
@@ -216,11 +221,20 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
      computed, so this holds for both frame sets without a second table of
      constants. If it cannot be read, nothing is applied and the handover is the
      plain cross-fade it was before. */
-  var ORB_D = 176.4 / 874;    // the film's closing orb, as a fraction of COMP height
-  var ORB_Y = 433.6 / 874;    // and where its centre sits down that height
+  /* Re-measured for splash lottie 5. The comp grew from 828x874 to 828x1489 —
+     the same film in a much taller frame — so the closing orb sits in a
+     different place within it and is a smaller share of its height, even
+     though the artwork itself is unchanged (176 comp units across in both).
+
+     Measured by freezing the last frame and finding the orb by pixels, a
+     method checked against v3 first: it reproduced the constants shipping
+     today to within 0.7% on diameter and 0.1% on position, so the same
+     measurement of v5 can be trusted. */
+  var ORB_D = 175.9 / 1489;   // the film's closing orb, as a fraction of COMP height
+  var ORB_Y = 740.7 / 1489;   // and where its centre sits down that height
   var ORB_F = 0.398;          // the intro orb's share of its canvas, as flow.js draws it
   var ORB_PHASE = 2;          // loop frame whose ripple ring matches the film's ending
-  var COMP_W = 828, COMP_H = 874;   // the .lottie's own comp, as the designer set it
+  var COMP_W = 828, COMP_H = 1489;  // the .lottie's own comp, as the designer set it
 
   /* Place the film so that it ENDS where the intro's orb already is.
 
