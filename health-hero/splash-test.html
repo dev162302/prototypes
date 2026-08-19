@@ -18,12 +18,60 @@
   <button id="b-wk">B &mdash; Software + Worker</button>
   <div id="out">Tap A, watch it. Then tap B, watch it. Same film, same canvas size as the real page &mdash; only the renderer differs. Numbers appear when each finishes.</div>
 </div>
+<script>
+/* Report what this browser can actually do, before anything is tried. */
+window.__support = (function () {
+  var hasOC = typeof OffscreenCanvas !== 'undefined';
+  var hasTransfer = !!(document.createElement('canvas').transferControlToOffscreen);
+  var hasWorker = typeof Worker !== 'undefined';
+  var blobWorker = false;
+  try {
+    var u = URL.createObjectURL(new Blob(['self.close()'], {type:'text/javascript'}));
+    var w = new Worker(u); w.terminate(); URL.revokeObjectURL(u); blobWorker = true;
+  } catch (e) {}
+  return { OffscreenCanvas: hasOC, transferControlToOffscreen: hasTransfer,
+           Worker: hasWorker, blobWorker: blobWorker,
+           ok: hasOC && hasTransfer && hasWorker && blobWorker };
+})();
+window.addEventListener('error', function (e) {
+  var o = document.getElementById('out');
+  if (o) o.textContent = 'error: ' + (e.message || e.type);
+}, true);
+window.addEventListener('unhandledrejection', function (e) {
+  var o = document.getElementById('out');
+  if (o) o.textContent = 'failed: ' + (e.reason && e.reason.message || e.reason);
+});
+</script>
 <script type="module">
-const c = document.getElementById('c'), out = document.getElementById('out');
+let c = document.getElementById('c');
+const out = document.getElementById('out');
+/* A canvas can only ever be handed to ONE renderer. transferControlToOffscreen
+   throws once a context exists, so after running the WebGL option this element
+   can never drive the worker — which is exactly why B appeared not to open
+   when A had been tried first. Each run gets a new element. */
+function freshCanvas(){
+  const n = document.createElement('canvas');
+  n.id = 'c';
+  c.parentNode.replaceChild(n, c);
+  c = n; place();
+  return n;
+}
+(function () {
+  const s = window.__support;
+  const b = document.getElementById('b-wk');
+  if (!s.ok) {
+    b.disabled = true; b.style.opacity = .45;
+    b.textContent = 'B \u2014 not supported here';
+    out.innerHTML = 'This browser cannot run the worker renderer.<br>' +
+      'OffscreenCanvas ' + s.OffscreenCanvas + ' \u00b7 transferControlToOffscreen ' +
+      s.transferControlToOffscreen + ' \u00b7 Worker ' + s.Worker +
+      ' \u00b7 blob worker ' + s.blobWorker + '<br>' + navigator.userAgent;
+  }
+})();
 /* The same canvas play.html builds: sized so the closing orb would land on the
    home orb. That is the whole reason this is heavier than a Lottie viewer. */
 const CW = 638, CH = 674;
-function place(){ c.style.width=CW+'px'; c.style.height=CH+'px';
+function place(){ if(!c) return; c.style.width=CW+'px'; c.style.height=CH+'px';
   c.style.left=Math.round((innerWidth-CW)/2)+'px';
   c.style.top=Math.round((innerHeight-CH)/2)+'px'; }
 place(); addEventListener('resize', place);
@@ -31,12 +79,17 @@ place(); addEventListener('resize', place);
 let player = null;
 async function run(mode){
   if (player) { try{ player.destroy(); }catch(e){} player=null; }
+  freshCanvas();
   document.getElementById('b-gl').classList.toggle('on', mode==='gl');
   document.getElementById('b-wk').classList.toggle('on', mode==='wk');
   out.textContent = 'loading…';
   const file = mode==='wk' ? 'sw' : 'gl';
-  const mod = await import('./splash/_try/'+file+'.js');
-  const Ctor = mode==='wk' ? mod.DotLottieWorker : mod.DotLottie;
+  let mod, Ctor;
+  try {
+    mod = await import('./splash/_try/'+file+'.js');
+    Ctor = mode==='wk' ? mod.DotLottieWorker : mod.DotLottie;
+    if (!Ctor) throw new Error('build has no ' + (mode==='wk'?'DotLottieWorker':'DotLottie'));
+  } catch (e) { out.textContent = 'could not load renderer: ' + (e.message||e); return; }
   Ctor.setWasmUrl('splash/_try/'+file+'.wasm');
   const data = await fetch('splash/splash.lottie').then(r=>r.arrayBuffer());
   let frames=0, t0=0, gaps=[], last=0;
@@ -44,7 +97,10 @@ async function run(mode){
     layout:{fit:'fit-height',align:[0.5,0.5]},
     renderConfig:{devicePixelRatio:0.75, freezeOnOffscreen:true} };
   if (mode==='wk') opts.workerId='splashtest';
-  player = new Ctor(opts);
+  try { player = new Ctor(opts); }
+  catch (e) { out.textContent = 'renderer failed to start: ' + (e.message||e); return; }
+  setTimeout(function(){ if (out.textContent === 'loading\u2026' || out.textContent === 'playing\u2026')
+    out.textContent = 'no frames after 15s \u2014 this renderer is not working here. ' + navigator.userAgent; }, 15000);
   player.addEventListener('load', ()=>{
     t0=performance.now(); last=t0; player.play();
     out.textContent = 'playing…';
