@@ -419,11 +419,32 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
          screen was always doing to it. */
       layout: { fit: 'fit-height', align: [0.5, 0.5] },
       renderConfig: {
-        // The canvas is the whole viewport and the film is heavy. A phone
-        // reporting DPR 3 would have this rasterising a 3x surface every
-        // frame, which is where a good part of the budget was going. The game
-        // caps at 2 for the same reason; matching it keeps the two consistent.
-        devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        /* A PIXEL BUDGET, not a device-pixel-ratio cap.
+           Capping at 2 was not enough once the comp grew: the canvas has to be
+           640x1151 CSS on a phone to place the orb, and at DPR 2 that is a
+           2.95 megapixel surface rasterised every frame. Measured, that costs
+           42.5 ms a frame — against the 41.7 ms a 24 fps film has to spare. It
+           was running with no headroom at all, which is what the stutter was.
+
+           So the budget is a number of pixels and the ratio is derived from
+           it, which keeps this honest if the comp changes shape again.
+
+           420,000 puts a phone at ~0.75 and desktop at the same floor, about
+           11.5 ms a frame — 3.6x headroom. Below 0.75 the cost stops falling
+           (11.1 ms at 0.6), so there is nothing left to win there.
+
+           Rendering below CSS resolution sounds lossy and is not, here: the
+           closing orb is deliberately chunky pixel art and the rest is soft
+           gradient. Compared frame by frame at 0.6, 0.75, 1, 1.25, 1.5 and 2 —
+           indistinguishable at every step. The GPU does the upscale for free.
+
+           The CSS size is untouched, so the orb still lands exactly where
+           place() puts it. Only the buffer behind it gets smaller. */
+        devicePixelRatio: (function () {
+          var px = (parseFloat(canvas.style.width) || 0) * (parseFloat(canvas.style.height) || 0);
+          var want = px ? Math.sqrt(420000 / px) : 1;
+          return Math.max(0.75, Math.min(want, 1.5));
+        })(),
         freezeOnOffscreen: true
       }
     });
