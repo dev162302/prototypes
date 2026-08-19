@@ -1,0 +1,70 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Splash renderer test</title>
+<style>
+  html,body{margin:0;background:#202664;color:#dfe6f5;font:14px/1.4 system-ui,sans-serif}
+  #stage{position:relative;height:100vh;overflow:hidden}
+  canvas{position:absolute;display:block}
+  #ui{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+      background:rgba(0,0,0,.45);backdrop-filter:blur(6px);text-align:center}
+  button{font:600 14px system-ui;padding:10px 14px;margin:4px;border:0;border-radius:8px;
+         background:#dfe6f5;color:#202664}
+  button.on{background:#4d7fd6;color:#fff}
+  #out{margin-top:8px;font-variant-numeric:tabular-nums;min-height:2.4em}
+</style></head><body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="ui">
+  <button id="b-gl">A &mdash; WebGL (ships today)</button>
+  <button id="b-wk">B &mdash; Software + Worker</button>
+  <div id="out">Tap A, watch it. Then tap B, watch it. Same film, same canvas size as the real page &mdash; only the renderer differs. Numbers appear when each finishes.</div>
+</div>
+<script type="module">
+const c = document.getElementById('c'), out = document.getElementById('out');
+/* The same canvas play.html builds: sized so the closing orb would land on the
+   home orb. That is the whole reason this is heavier than a Lottie viewer. */
+const CW = 638, CH = 674;
+function place(){ c.style.width=CW+'px'; c.style.height=CH+'px';
+  c.style.left=Math.round((innerWidth-CW)/2)+'px';
+  c.style.top=Math.round((innerHeight-CH)/2)+'px'; }
+place(); addEventListener('resize', place);
+
+let player = null;
+async function run(mode){
+  if (player) { try{ player.destroy(); }catch(e){} player=null; }
+  document.getElementById('b-gl').classList.toggle('on', mode==='gl');
+  document.getElementById('b-wk').classList.toggle('on', mode==='wk');
+  out.textContent = 'loading…';
+  const file = mode==='wk' ? 'sw' : 'gl';
+  const mod = await import('./splash/_try/'+file+'.js');
+  const Ctor = mode==='wk' ? mod.DotLottieWorker : mod.DotLottie;
+  Ctor.setWasmUrl('splash/_try/'+file+'.wasm');
+  const data = await fetch('splash/splash.lottie').then(r=>r.arrayBuffer());
+  let frames=0, t0=0, gaps=[], last=0;
+  const opts = { canvas:c, data, autoplay:false, loop:false,
+    layout:{fit:'fit-height',align:[0.5,0.5]},
+    renderConfig:{devicePixelRatio:0.75, freezeOnOffscreen:true} };
+  if (mode==='wk') opts.workerId='splashtest';
+  player = new Ctor(opts);
+  player.addEventListener('load', ()=>{
+    t0=performance.now(); last=t0; player.play();
+    out.textContent = 'playing…';
+  });
+  player.addEventListener('frame', ()=>{
+    const n=performance.now(); if(last) gaps.push(n-last); last=n; frames++;
+  });
+  player.addEventListener('complete', ()=>{
+    const took=performance.now()-t0;
+    gaps.sort((a,b)=>a-b);
+    const p50=gaps[Math.floor(gaps.length/2)]||0, worst=gaps[gaps.length-1]||0;
+    const janky=gaps.filter(g=>g>50).length;
+    out.innerHTML = (mode==='wk'?'Software + Worker':'WebGL')+
+      '<br>played '+(took/1000).toFixed(2)+'s for 5.42s of film ('+
+      (took/5420*100-100).toFixed(0)+'%)<br>'+
+      frames+' frames drawn · median gap '+p50.toFixed(0)+'ms · worst '+worst.toFixed(0)+
+      'ms · '+janky+' over 50ms';
+  });
+  player.addEventListener('loadError', ()=>{ out.textContent='failed to load'; });
+}
+document.getElementById('b-gl').onclick = ()=>run('gl');
+document.getElementById('b-wk').onclick = ()=>run('wk');
+</script></body></html>
