@@ -69,7 +69,7 @@
   <canvas id="splash-canvas"></canvas>
   <div id="splash-skip">TAP TO SKIP</div>
 </div>
-<iframe class="scr" id="f-game" src="game/index.html" title="Game"></iframe>
+<iframe class="scr" id="f-game" data-src="game/index.html" title="Game"></iframe>
   <iframe class="scr" id="f-intro" title="Intro"></iframe>
   <iframe class="scr" id="f-ended" title="Run ended"></iframe>
   <iframe class="scr" id="f-board" title="Leaderboard"></iframe>
@@ -297,7 +297,28 @@ window.__API = new URLSearchParams(location.search).get('api') || window.FLOW_AP
   /* `landed` is the film reaching its own end. A tap-to-skip at 2s leaves the
      orb mid-flight, so there is no closing ring to match and the phase pin is
      pointless there — the film is nowhere near its resting frame. */
+  /* Start the game only now.
+     It used to load from the markup, on the reasoning that it is the slow one
+     and should get the connection first. Profiling the splash says otherwise:
+     booting it blocks the main thread for a solid 1,062 ms, and the splash's
+     own wasm and film do not even begin fetching until 2,050 ms because that
+     block is in front of them. The film then plays through the tail of it.
+
+     Moved behind the fade, the same second of work lands on the intro screen —
+     which is static, and which a player is reading before they tap. The flow
+     already copes if they tap before it is ready: play() sets wantStart and
+     the 'rw:ready' handler starts it the moment it arrives.
+
+     Belt and braces: if this never runs for any reason, the timer below loads
+     it anyway. */
+  function startGame() {
+    var g = document.getElementById('f-game');
+    if (g && !g.src && g.dataset.src) g.src = g.dataset.src;
+  }
+  setTimeout(startGame, 12000);
+
   function fadeOut(ms, landed) {
+    startGame();
     /* Match the intro's ripple phase as the dissolve starts. Geometry alone
        does not finish this: the orbs can sit exactly on top of one another and
        the cut still shows, because the orb carries a ripple ring on a 32-frame
